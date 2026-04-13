@@ -12,6 +12,23 @@ export const BASE_ENEMY_RADIUS = 14;
 // ─── Game loop ─────────────────────────────────────────────────────────────────
 export const TARGET_FPS = 60;
 export const BOSS_INTERVAL_SECONDS = 60; // Boss toutes les 60s
+export const SPEED_SCALE = 50;           // facteur de conversion vitesse → px/s
+export const VICTORY_TIME = 300;         // secondes pour une victoire standard
+
+// ─── Modes de jeu ─────────────────────────────────────────────────────────────
+export const GAME_MODE = {
+  STANDARD: 'standard', // 5 minutes
+  ENDLESS:  'endless',  // survie infinie
+};
+
+// ─── Gameplay tuning ───────────────────────────────────────────────────────────
+export const SHOOTER_DESIRED_DIST   = 200; // distance maintenue par le Tirailleur
+export const EXPLOSION_RADIUS       = 60;  // rayon d'explosion par défaut
+export const FRACTURE_RADIUS        = 60;  // rayon de fracture upgrade
+export const SHOCKWAVE_RADIUS       = 80;  // rayon de l'onde de choc upgrade
+export const XP_ATTRACT_RADIUS_MULT = 3;   // attraction XP = pickupR × ce facteur
+export const XP_ATTRACT_SPEED       = 150; // px/s attraction max des orbes XP
+export const INVINCIBLE_DURATION    = 0.5; // secondes d'invincibilité après un coup
 
 // ─── XP & Level ───────────────────────────────────────────────────────────────
 export const XP_PER_LEVEL_BASE = 50;   // XP nécessaire pour le niveau 1
@@ -65,6 +82,7 @@ export const CLASS_INFO = {
     desc: 'Tir furtif — le premier projectile après 4s inflige ×2.',
     locked: true,
     purchasable: true,
+    purchaseCost: 20,
   },
   paladin: {
     name: 'Paladin',   short: 'PAL', color: '#FFCC00',
@@ -78,6 +96,7 @@ export const CLASS_INFO = {
     desc: 'Frappe radiale en étoile + régénération passive.',
     locked: true,
     purchasable: true,
+    purchaseCost: 30,
   },
 };
 

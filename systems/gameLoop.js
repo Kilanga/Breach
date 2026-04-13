@@ -5,15 +5,15 @@
 
 import { ENEMY_INFO, CLASS_INFO, ARENA_WIDTH, ARENA_HEIGHT,
          PLAYER_RADIUS, BASE_ENEMY_RADIUS, XP_PER_LEVEL_BASE, XP_LEVEL_SCALING,
-         ENEMY_TYPES } from '../constants';
+         ENEMY_TYPES, SPEED_SCALE, SHOOTER_DESIRED_DIST, EXPLOSION_RADIUS,
+         FRACTURE_RADIUS, SHOCKWAVE_RADIUS, XP_ATTRACT_RADIUS_MULT,
+         XP_ATTRACT_SPEED, INVINCIBLE_DURATION } from '../constants';
 import { getActiveWaveConfig, getEnemyScaling, getBossAtTime } from './waveSystem';
 import { getAttackFn, getAttackCooldown, fireShooterProjectile } from './attackSystem';
 import { computePlayerStats, hasUpgrade } from './upgradeSystem';
+import { makeId } from '../utils/makeId';
 
 // ─── Factory ──────────────────────────────────────────────────────────────────
-
-let _idCounter = 0;
-function makeId() { return ++_idCounter; }
 
 export function createInitialState(shape, startingStats) {
   const info = CLASS_INFO[shape];
@@ -53,6 +53,7 @@ export function createInitialState(shape, startingStats) {
     xp:             0,
     level:          1,
     kills:          0,
+    bossKills:      0,          // boss tués (bonus score)
     pendingUpgrade: false,      // true = afficher l'écran d'upgrade
     activeUpgrades: [],
     // État
@@ -137,7 +138,7 @@ export function updateGame(state, dt, input) {
   }
 
   // ── Mouvement du joueur ───────────────────────────────────────────────────
-  const speed = s.player.speed * 50; // unités/s (50px par unité)
+  const speed = s.player.speed * SPEED_SCALE; // unités/s (SPEED_SCALE px par unité)
   const len = Math.sqrt(input.dx * input.dx + input.dy * input.dy);
   if (len > 0.01) {
     const nx = input.dx / len;
@@ -179,15 +180,18 @@ export function updateGame(state, dt, input) {
   s = updateEnemyProjectiles(s, dt);
 
   // ── Collecte XP ──────────────────────────────────────────────────────────
-  s = collectXP(s);
+  s = collectXP(s, dt);
 
   // ── Particules ────────────────────────────────────────────────────────────
   s.particles = s.particles
-    .map(p => ({ ...p, x: p.x + p.vx * dt * 50, y: p.y + p.vy * dt * 50, life: p.life - dt }))
+    .map(p => ({ ...p, x: p.x + p.vx * dt * SPEED_SCALE, y: p.y + p.vy * dt * SPEED_SCALE, life: p.life - dt }))
     .filter(p => p.life > 0);
 
-  // ── Score (temps de survie) ───────────────────────────────────────────────
-  s.score = Math.floor(s.elapsedTime) * 10 + s.kills * 5;
+  // ── Score (temps + kills + niveau + boss) ────────────────────────────────
+  s.score = Math.floor(s.elapsedTime) * 10
+           + s.kills * 5
+           + (s.level - 1) * 50
+           + (s.bossKills || 0) * 200;
 
   return s;
 }
@@ -270,19 +274,19 @@ function spawnEnemy(type, scaling) {
 function updateEnemies(s, dt) {
   const player = s.player;
   let newEnemyProjs = [...s.enemyProjectiles];
-  let newEnemies = [...s.enemies];
-  let newParticles = [...s.particles];
-  let newSummons = [];
+  let newParticles  = [...s.particles];
+  let newSummons    = [];
+  let healEvents    = []; // { id, amount } — appliqués après le map pour éviter les mutations
 
-  newEnemies = newEnemies
-    .filter(e => e !== null)
+  // ── Pass 1 : IA + status effects ────────────────────────────────────────────
+  let newEnemies = s.enemies
+    .filter(Boolean)
     .map(e => {
       let enemy = { ...e };
 
       // Stun
       if (enemy.stunTimer > 0) {
         enemy.stunTimer = Math.max(0, enemy.stunTimer - dt);
-        // Brûlure pendant le stun
         if (enemy.burnTimer > 0) {
           enemy.burnTimer -= dt;
           enemy.hp -= enemy.burnDamage * dt;
@@ -303,67 +307,89 @@ function updateEnemies(s, dt) {
 
       switch (enemy.behavior) {
         case 'chase':
-        case 'boss_spiral':
-        case 'boss_cinder':
-        case 'boss_rift':
           enemy = chasePlayer(enemy, player, dt);
           break;
         case 'shoot':
           enemy = shooterAI(enemy, player, dt, newEnemyProjs);
           break;
-        case 'healer':
-          enemy = healerAI(enemy, player, newEnemies, dt);
+        case 'healer': {
+          const result = healerAI(enemy, player, s.enemies, dt); // lit l'état original (pas de mutation)
+          enemy = result.enemy;
+          healEvents = healEvents.concat(result.healEvents);
           break;
-        case 'summon':
-          { const result = summonerAI(enemy, player, dt);
-            enemy = result.enemy;
-            newSummons = newSummons.concat(result.summons);
-          }
+        }
+        case 'summon': {
+          const result = summonerAI(enemy, player, dt);
+          enemy = result.enemy;
+          newSummons = newSummons.concat(result.summons);
+          break;
+        }
+        case 'boss_spiral':
+        case 'boss_void':
+          enemy = bossAI_void(enemy, player, dt, newEnemyProjs);
+          break;
+        case 'boss_cinder':
+          enemy = bossAI_cinder(enemy, player, dt, newEnemyProjs);
           break;
         case 'boss_mirror':
-          enemy = chasePlayer(enemy, player, dt);
-          // Mirror : se duplique à 50% HP (géré à la mort)
+          enemy = bossAI_mirror(enemy, player, dt, newEnemyProjs);
           break;
         case 'boss_pulse':
           enemy = bossAI_pulse(enemy, player, dt, newEnemyProjs);
+          break;
+        case 'boss_rift':
+          enemy = bossAI_rift(enemy, player, dt, newEnemyProjs);
           break;
         default:
           enemy = chasePlayer(enemy, player, dt);
       }
 
-      // Collision joueur
-      if (s.invincibleTimer <= 0 && !s.player.shieldActive) {
-        const dx = player.x - enemy.x;
-        const dy = player.y - enemy.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < PLAYER_RADIUS + enemy.radius) {
-          s = damagePlayer(s, enemy.damage, true);
-          if (!s.alive) return enemy;
-          // Épines
-          const thorns = s.activeUpgrades.filter(u => u.id === 'thorns').length;
-          if (thorns > 0) enemy.hp -= thorns * 2;
-        }
-      } else if (s.player.shieldActive) {
-        const dx = player.x - enemy.x;
-        const dy = player.y - enemy.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < PLAYER_RADIUS + enemy.radius) {
-          s.player = { ...s.player, shieldActive: false };
-        }
-      }
-
-      return enemy.hp <= 0 ? null : enemy;
+      return enemy;
     })
     .filter(Boolean);
 
-  // Invocations
-  for (const summon of newSummons) {
-    newEnemies.push(summon);
+  // ── Appliquer les soins du Guérisseur (sans mutation des objets originaux) ──
+  for (const { id, amount } of healEvents) {
+    const idx = newEnemies.findIndex(e => e && e.id === id);
+    if (idx >= 0) {
+      newEnemies[idx] = {
+        ...newEnemies[idx],
+        hp: Math.min(newEnemies[idx].hp + amount, newEnemies[idx].maxHp),
+      };
+    }
+  }
+
+  // ── Invocations du Summoner ──────────────────────────────────────────────────
+  for (const summon of newSummons) newEnemies.push(summon);
+
+  // ── Pass 2 : Collisions joueur (boucle séparée pour éviter les mutations de s) ──
+  const thornsCount = s.activeUpgrades.filter(u => u.id === 'thorns').length;
+  for (let i = 0; i < newEnemies.length; i++) {
+    const enemy = newEnemies[i];
+    if (!enemy || !s.alive) continue;
+
+    const dx = player.x - enemy.x;
+    const dy = player.y - enemy.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (s.invincibleTimer <= 0 && !s.player.shieldActive) {
+      if (dist < PLAYER_RADIUS + enemy.radius) {
+        s = damagePlayer(s, enemy.damage, true);
+        if (thornsCount > 0) {
+          newEnemies[i] = { ...enemy, hp: enemy.hp - thornsCount * 2 };
+        }
+        // Une seule collision par frame (invincibilité empêche les suivantes)
+      }
+    } else if (s.player.shieldActive) {
+      if (dist < PLAYER_RADIUS + enemy.radius) {
+        s = { ...s, player: { ...s.player, shieldActive: false } };
+      }
+    }
   }
 
   return {
     ...s,
-    enemies: newEnemies,
+    enemies: newEnemies.filter(e => e && e.hp > 0),
     enemyProjectiles: newEnemyProjs,
     particles: newParticles,
   };
@@ -373,7 +399,7 @@ function chasePlayer(enemy, player, dt) {
   const dx = player.x - enemy.x;
   const dy = player.y - enemy.y;
   const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-  const spd = enemy.speed * 50 * dt;
+  const spd = enemy.speed * SPEED_SCALE * dt;
   return {
     ...enemy,
     x: enemy.x + (dx / dist) * spd,
@@ -385,53 +411,50 @@ function shooterAI(enemy, player, dt, projs) {
   const dx = player.x - enemy.x;
   const dy = player.y - enemy.y;
   const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-  const desiredDist = 200;
   let nx = enemy.x;
   let ny = enemy.y;
-  if (dist < desiredDist - 20) {
+  if (dist < SHOOTER_DESIRED_DIST - 20) {
     // Fuir
-    nx -= (dx / dist) * enemy.speed * 50 * dt;
-    ny -= (dy / dist) * enemy.speed * 50 * dt;
-  } else if (dist > desiredDist + 20) {
-    // Approcher
-    nx += (dx / dist) * enemy.speed * 50 * dt * 0.5;
-    ny += (dy / dist) * enemy.speed * 50 * dt * 0.5;
+    nx -= (dx / dist) * enemy.speed * SPEED_SCALE * dt;
+    ny -= (dy / dist) * enemy.speed * SPEED_SCALE * dt;
+  } else if (dist > SHOOTER_DESIRED_DIST + 20) {
+    // Approcher lentement
+    nx += (dx / dist) * enemy.speed * SPEED_SCALE * dt * 0.5;
+    ny += (dy / dist) * enemy.speed * SPEED_SCALE * dt * 0.5;
   }
   const shootTimer = (enemy.shootTimer || 0) + dt;
   const info = ENEMY_INFO.shooter;
-  let newProj = null;
   if (shootTimer >= (info.projectileCooldown || 2.5)) {
-    newProj = fireShooterProjectile({ ...enemy, x: nx, y: ny }, player.x, player.y);
-    projs.push(newProj);
+    projs.push(fireShooterProjectile({ ...enemy, x: nx, y: ny }, player.x, player.y));
     return { ...enemy, x: nx, y: ny, shootTimer: 0 };
   }
   return { ...enemy, x: nx, y: ny, shootTimer };
 }
 
+// healerAI retourne { enemy, healEvents } pour éviter les mutations directes
 function healerAI(enemy, player, allEnemies, dt) {
-  // Fuir le joueur
   const dx = player.x - enemy.x;
   const dy = player.y - enemy.y;
   const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-  let nx = enemy.x - (dx / dist) * enemy.speed * 50 * dt * 0.8;
-  let ny = enemy.y - (dy / dist) * enemy.speed * 50 * dt * 0.8;
+  let nx = enemy.x - (dx / dist) * enemy.speed * SPEED_SCALE * dt * 0.8;
+  let ny = enemy.y - (dy / dist) * enemy.speed * SPEED_SCALE * dt * 0.8;
   nx = Math.max(20, Math.min(ARENA_WIDTH  - 20, nx));
   ny = Math.max(20, Math.min(ARENA_HEIGHT - 20, ny));
 
-  // Soigner ennemis proches
   const healTimer = (enemy.healTimer || 0) + dt;
   if (healTimer >= ENEMY_INFO.healer.healInterval) {
+    const healEvents = [];
     for (const other of allEnemies) {
-      if (other.id === enemy.id) continue;
+      if (!other || other.id === enemy.id) continue;
       const odx = other.x - nx;
       const ody = other.y - ny;
-      if (Math.sqrt(odx*odx + ody*ody) < ENEMY_INFO.healer.healRadius) {
-        other.hp = Math.min(other.hp + ENEMY_INFO.healer.healRate, other.maxHp);
+      if (Math.sqrt(odx * odx + ody * ody) < ENEMY_INFO.healer.healRadius) {
+        healEvents.push({ id: other.id, amount: ENEMY_INFO.healer.healRate });
       }
     }
-    return { ...enemy, x: nx, y: ny, healTimer: 0 };
+    return { enemy: { ...enemy, x: nx, y: ny, healTimer: 0 }, healEvents };
   }
-  return { ...enemy, x: nx, y: ny, healTimer };
+  return { enemy: { ...enemy, x: nx, y: ny, healTimer }, healEvents: [] };
 }
 
 function summonerAI(enemy, player, dt) {
@@ -456,27 +479,104 @@ function summonerAI(enemy, player, dt) {
   return { enemy: { ...e, summonTimer }, summons };
 }
 
+// ─── Comportements boss uniques ───────────────────────────────────────────────
+
+// Boss L'Écho — spirale de 6 projectiles à angle progressif
+function bossAI_void(enemy, player, dt, projs) {
+  const e = chasePlayer(enemy, player, dt);
+  const patternTimer = (e.patternTimer || 0) + dt;
+  const patternPhase = e.patternPhase || 0;
+  if (patternTimer >= 2) {
+    for (let i = 0; i < 6; i++) {
+      const angle = (i / 6) * Math.PI * 2 + patternPhase;
+      projs.push({
+        id: makeId(), x: e.x, y: e.y,
+        vx: Math.cos(angle) * 3, vy: Math.sin(angle) * 3,
+        damage: e.damage * 0.5, radius: 7, color: '#BB44FF',
+        owner: 'enemy', enemyId: e.id, lifeMs: 2500,
+      });
+    }
+    return { ...e, patternTimer: 0, patternPhase: patternPhase + Math.PI / 3 };
+  }
+  return { ...e, patternTimer };
+}
+
+// Boss Veilleur de Cendre — traînée de projectiles de feu (proj statiques courts)
+function bossAI_cinder(enemy, player, dt, projs) {
+  const e = chasePlayer(enemy, player, dt);
+  const trailTimer = (e.trailTimer || 0) + dt;
+  if (trailTimer >= 0.35) {
+    projs.push({
+      id: makeId(), x: e.x, y: e.y,
+      vx: 0, vy: 0,
+      damage: e.damage * 0.4, radius: 14, color: '#FF6600',
+      owner: 'enemy', enemyId: e.id, lifeMs: 1800,
+    });
+    return { ...e, trailTimer: 0 };
+  }
+  return { ...e, trailTimer };
+}
+
+// Boss La Mère-Écho — tirs ciblés rapides toutes les 1.5s
+function bossAI_mirror(enemy, player, dt, projs) {
+  const e = chasePlayer(enemy, player, dt);
+  const patternTimer = (e.patternTimer || 0) + dt;
+  if (patternTimer >= 1.5) {
+    const dx = player.x - e.x;
+    const dy = player.y - e.y;
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+    // 3 projectiles en léger éventail
+    for (let spread = -1; spread <= 1; spread++) {
+      const angle = Math.atan2(dy, dx) + spread * 0.2;
+      projs.push({
+        id: makeId(), x: e.x, y: e.y,
+        vx: Math.cos(angle) * 5, vy: Math.sin(angle) * 5,
+        damage: e.damage * 0.6, radius: 7, color: '#AAFFFF',
+        owner: 'enemy', enemyId: e.id, lifeMs: 2000,
+      });
+    }
+    return { ...e, patternTimer: 0 };
+  }
+  return { ...e, patternTimer };
+}
+
+// Boss Tonnerre Incarné — onde de choc 12 projectiles toutes les 3s
 function bossAI_pulse(enemy, player, dt, projs) {
   const e = chasePlayer(enemy, player, dt);
   const patternTimer = (e.patternTimer || 0) + dt;
   if (patternTimer >= 3) {
-    // Onde de choc : 12 projectiles en cercle
     for (let i = 0; i < 12; i++) {
       const angle = (i / 12) * Math.PI * 2;
       projs.push({
-        id: makeId(),
-        x: e.x, y: e.y,
-        vx: Math.cos(angle) * 4,
-        vy: Math.sin(angle) * 4,
-        damage: e.damage * 0.6,
-        radius: 8,
-        color: '#FFFF44',
-        owner: 'enemy',
-        enemyId: e.id,
-        lifeMs: 2000,
+        id: makeId(), x: e.x, y: e.y,
+        vx: Math.cos(angle) * 4, vy: Math.sin(angle) * 4,
+        damage: e.damage * 0.6, radius: 8, color: '#FFFF44',
+        owner: 'enemy', enemyId: e.id, lifeMs: 2000,
       });
     }
     return { ...e, patternTimer: 0 };
+  }
+  return { ...e, patternTimer };
+}
+
+// Boss Le Dévoreur — rafale de 16 projectiles + téléportation vers le joueur
+function bossAI_rift(enemy, player, dt, projs) {
+  const e = chasePlayer(enemy, player, dt);
+  const patternTimer = (e.patternTimer || 0) + dt;
+  if (patternTimer >= 4) {
+    for (let i = 0; i < 16; i++) {
+      const angle = (i / 16) * Math.PI * 2;
+      projs.push({
+        id: makeId(), x: e.x, y: e.y,
+        vx: Math.cos(angle) * 5, vy: Math.sin(angle) * 5,
+        damage: e.damage * 0.8, radius: 9, color: '#FF0066',
+        owner: 'enemy', enemyId: e.id, lifeMs: 2000,
+      });
+    }
+    // Téléportation à proximité du joueur
+    const teleX = Math.max(40, Math.min(ARENA_WIDTH  - 40, player.x + (Math.random() - 0.5) * 120));
+    const teleY = Math.max(40, Math.min(ARENA_HEIGHT - 40, player.y + (Math.random() - 0.5) * 120));
+    return { ...e, x: teleX, y: teleY, patternTimer: 0 };
   }
   return { ...e, patternTimer };
 }
@@ -496,8 +596,8 @@ function updatePlayerProjectiles(s, dt) {
       if (proj.lifeMs <= 0) return null;
 
       // Déplacement
-      proj.x += proj.vx * 50 * dt;
-      proj.y += proj.vy * 50 * dt;
+      proj.x += proj.vx * SPEED_SCALE * dt;
+      proj.y += proj.vy * SPEED_SCALE * dt;
 
       // Sortie de l'arène
       if (proj.x < 0 || proj.x > ARENA_WIDTH || proj.y < 0 || proj.y > ARENA_HEIGHT) return null;
@@ -519,14 +619,13 @@ function updatePlayerProjectiles(s, dt) {
         for (let i = 0; i < newEnemies.length; i++) {
           const e = newEnemies[i];
           if (!e) continue;
-          if (proj.piercing && proj.piercedIds && proj.piercedIds.has(e.id)) continue;
+          if (proj.piercing && proj.piercedIds && proj.piercedIds.includes(e.id)) continue;
           const dx = e.x - proj.x;
           const dy = e.y - proj.y;
           if (Math.sqrt(dx*dx + dy*dy) < proj.radius + e.radius) {
             newEnemies[i] = applyDamageToEnemy(e, proj.damage, s.activeUpgrades);
             if (proj.piercing) {
-              proj.piercedIds = new Set(proj.piercedIds);
-              proj.piercedIds.add(e.id);
+              proj = { ...proj, piercedIds: [...proj.piercedIds, e.id] };
             } else {
               return null; // non-piercing s'arrête
             }
@@ -541,9 +640,11 @@ function updatePlayerProjectiles(s, dt) {
   // Kill processing
   const deadEnemies = newEnemies.filter(e => e && e.hp <= 0);
   newEnemies = newEnemies.filter(e => e && e.hp > 0);
+  let bossKills = 0;
 
   for (const dead of deadEnemies) {
     kills++;
+    if (dead.isBoss) bossKills++;
     // XP orb
     newXpOrbs.push({
       id: makeId(),
@@ -566,7 +667,7 @@ function updatePlayerProjectiles(s, dt) {
     }
     // Explosif : dégâts de zone
     if (dead.behavior === 'explosive' || ENEMY_INFO[dead.type]?.explodeOnDeath) {
-      const explodeR = ENEMY_INFO[dead.type]?.explodeRadius || 60;
+      const explodeR = ENEMY_INFO[dead.type]?.explodeRadius || EXPLOSION_RADIUS;
       newEnemies = newEnemies.map(e => {
         const dx = e.x - dead.x;
         const dy = e.y - dead.y;
@@ -584,12 +685,11 @@ function updatePlayerProjectiles(s, dt) {
     }
     // Fracture upgrade
     if (hasUpgrade(s.activeUpgrades, 'fracture')) {
-      const fracR = 60;
       const fracDmg = dead.maxHp * 0.3;
       newEnemies = newEnemies.map(e => {
         const dx = e.x - dead.x;
         const dy = e.y - dead.y;
-        if (Math.sqrt(dx*dx + dy*dy) < fracR) {
+        if (Math.sqrt(dx*dx + dy*dy) < FRACTURE_RADIUS) {
           return { ...e, hp: e.hp - fracDmg };
         }
         return e;
@@ -608,7 +708,7 @@ function updatePlayerProjectiles(s, dt) {
       newEnemies = newEnemies.map(e => {
         const dx = e.x - dead.x;
         const dy = e.y - dead.y;
-        if (Math.sqrt(dx*dx + dy*dy) < 80) {
+        if (Math.sqrt(dx*dx + dy*dy) < SHOCKWAVE_RADIUS) {
           return { ...e, stunTimer: 1 };
         }
         return e;
@@ -621,6 +721,7 @@ function updatePlayerProjectiles(s, dt) {
     const newHp = Math.min(s.player.maxHp, s.player.hp + healFromKills);
     s.player = { ...s.player, hp: newHp };
     s.kills += kills;
+    s.bossKills = (s.bossKills || 0) + bossKills;
     const newXp = s.xp + deadEnemies.reduce((acc, e) => acc + (e.xpValue || 5), 0);
     const xpNeeded = xpForLevel(s.level);
     if (newXp >= xpNeeded) {
@@ -644,45 +745,65 @@ function updatePlayerProjectiles(s, dt) {
 // ─── Projectiles ennemis ──────────────────────────────────────────────────────
 
 function updateEnemyProjectiles(s, dt) {
+  let pendingDamage = null;
+
   const projs = s.enemyProjectiles
     .map(p => {
       const proj = { ...p, lifeMs: p.lifeMs - dt * 1000 };
       if (proj.lifeMs <= 0) return null;
-      proj.x += proj.vx * 50 * dt;
-      proj.y += proj.vy * 50 * dt;
+      proj.x += proj.vx * SPEED_SCALE * dt;
+      proj.y += proj.vy * SPEED_SCALE * dt;
       if (proj.x < 0 || proj.x > ARENA_WIDTH || proj.y < 0 || proj.y > ARENA_HEIGHT) return null;
-      // Collision joueur
-      const dx = s.player.x - proj.x;
-      const dy = s.player.y - proj.y;
-      if (Math.sqrt(dx*dx + dy*dy) < PLAYER_RADIUS + proj.radius) {
-        s = damagePlayer(s, proj.damage, true);
-        return null;
+      // Collision joueur (accumulate, apply once after map)
+      if (pendingDamage === null) {
+        const dx = s.player.x - proj.x;
+        const dy = s.player.y - proj.y;
+        if (Math.sqrt(dx*dx + dy*dy) < PLAYER_RADIUS + proj.radius) {
+          pendingDamage = proj.damage;
+          return null;
+        }
       }
       return proj;
     })
     .filter(Boolean);
+
+  if (pendingDamage !== null) {
+    s = damagePlayer(s, pendingDamage, true);
+  }
 
   return { ...s, enemyProjectiles: projs };
 }
 
 // ─── Collecte XP ─────────────────────────────────────────────────────────────
 
-function collectXP(s) {
+function collectXP(s, dt) {
   const pickupR = s.player.xpPickupRadius || 50;
   // Bonus aimant
   const magnetStacks = s.activeUpgrades.filter(u => u.id === 'magnet').length;
   const effectiveR = pickupR * (1 + magnetStacks * 0.5);
+  const attractR   = effectiveR * XP_ATTRACT_RADIUS_MULT;
 
   let xpGained = 0;
-  const remaining = s.xpOrbs.filter(orb => {
-    const dx = s.player.x - orb.x;
-    const dy = s.player.y - orb.y;
-    if (Math.sqrt(dx*dx + dy*dy) < effectiveR) {
-      xpGained += orb.value;
-      return false;
-    }
-    return true;
-  });
+  const remaining = s.xpOrbs
+    .map(orb => {
+      const dx = s.player.x - orb.x;
+      const dy = s.player.y - orb.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist < effectiveR) {
+        xpGained += orb.value;
+        return null; // collecté
+      }
+
+      // Attraction progressive vers le joueur
+      if (dist < attractR && dist > 0) {
+        const pull = (1 - dist / attractR) * XP_ATTRACT_SPEED * dt;
+        return { ...orb, x: orb.x + (dx / dist) * pull, y: orb.y + (dy / dist) * pull };
+      }
+
+      return orb;
+    })
+    .filter(Boolean);
 
   if (xpGained === 0) return { ...s, xpOrbs: remaining };
 
@@ -736,8 +857,8 @@ function damagePlayer(s, rawDamage, setInvincible) {
 
   return {
     ...s,
-    player: { ...s.player, hp: newHp, invincibleTimer: setInvincible ? 0.5 : 0 },
-    invincibleTimer: setInvincible ? 0.5 : 0,
+    player: { ...s.player, hp: newHp, invincibleTimer: setInvincible ? INVINCIBLE_DURATION : 0 },
+    invincibleTimer: setInvincible ? INVINCIBLE_DURATION : 0,
   };
 }
 

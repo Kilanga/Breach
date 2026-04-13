@@ -10,6 +10,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import useGameStore from './store/gameStore';
 import { GAME_PHASES, PALETTE } from './constants';
+import ErrorBoundary from './components/ErrorBoundary';
 
 import MenuScreen         from './screens/MenuScreen';
 import ShapeSelectScreen  from './screens/ShapeSelectScreen';
@@ -60,15 +61,17 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <View style={styles.root}>
-        <StatusBar style="light" backgroundColor={PALETTE.bg} />
-        {renderScreen()}
-        {/* Fondu noir de transition */}
-        <Animated.View
-          pointerEvents="none"
-          style={[StyleSheet.absoluteFill, { backgroundColor: '#000', opacity: fadeAnim }]}
-        />
-      </View>
+      <ErrorBoundary>
+        <View style={styles.root}>
+          <StatusBar style="light" backgroundColor={PALETTE.bg} />
+          {renderScreen()}
+          {/* Fondu noir de transition */}
+          <Animated.View
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFill, { backgroundColor: '#000', opacity: fadeAnim }]}
+          />
+        </View>
+      </ErrorBoundary>
     </SafeAreaProvider>
   );
 }

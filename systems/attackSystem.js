@@ -4,12 +4,7 @@
  */
 
 import { CLASS_INFO } from '../constants';
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function makeId() {
-  return Math.random().toString(36).slice(2, 9) + Date.now().toString(36);
-}
+import { makeId } from '../utils/makeId';
 
 function vecToNearest(player, enemies) {
   if (enemies.length === 0) return null;
@@ -48,7 +43,7 @@ export function fireAssassin(player, enemies, upgrades) {
     damage: dmg,
     radius: info.projectileRadius,
     piercing: true,
-    piercedIds: new Set(),
+    piercedIds: [],
     color: CLASS_INFO.triangle.color,
     owner: 'player',
     lifeMs: 2500,
@@ -114,7 +109,7 @@ export function fireOmbre(player, enemies, upgrades, ambushReady) {
     damage: dmg,
     radius: info.projectileRadius,
     piercing: false,
-    piercedIds: new Set(),
+    piercedIds: [],
     color: CLASS_INFO.shadow.color,
     owner: 'player',
     lifeMs: 2000,
@@ -139,7 +134,7 @@ export function firePaladin(player, enemies, upgrades) {
       damage: dmg,
       radius: info.projectileRadius,
       piercing: false,
-      piercedIds: new Set(),
+      piercedIds: [],
       color: CLASS_INFO.paladin.color,
       owner: 'player',
       lifeMs: 1500,

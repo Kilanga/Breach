@@ -5,15 +5,17 @@
 
 import React, { useRef, useCallback, useEffect, useState } from 'react';
 import { View, StyleSheet, Dimensions, AppState } from 'react-native';
+import * as Haptics from 'expo-haptics';
 
 import useGameStore from '../store/gameStore';
-import { PALETTE, ARENA_WIDTH, ARENA_HEIGHT, BOSS_INTERVAL_SECONDS } from '../constants';
+import { PALETTE, ARENA_WIDTH, ARENA_HEIGHT, VICTORY_TIME, GAME_MODE } from '../constants';
 import { createInitialState, updateGame } from '../systems/gameLoop';
 import { getUpgradeChoices, applySynergies, computePlayerStats } from '../systems/upgradeSystem';
 import ArenaRenderer from '../components/game/ArenaRenderer';
 import HUD from '../components/game/HUD';
 import VirtualJoystick from '../components/game/VirtualJoystick';
 import UpgradeChoiceScreen from './UpgradeChoiceScreen';
+import TutorialOverlay from '../components/game/TutorialOverlay';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -25,18 +27,28 @@ const SCALE_Y = ARENA_DISPLAY_H / ARENA_HEIGHT;
 
 export default function ArenaScreen() {
   const selectedShape  = useGameStore(s => s.selectedShape);
+  const gameMode       = useGameStore(s => s.gameMode);
   const getStartingStats = useGameStore(s => s.getStartingStats);
   const goToGameOver   = useGameStore(s => s.goToGameOver);
   const goToVictory    = useGameStore(s => s.goToVictory);
   const endRun         = useGameStore(s => s.endRun);
+  const totalRuns      = useGameStore(s => s.meta.totalRuns);
+  const sfxEnabled     = useGameStore(s => s.meta.sfxEnabled);
 
   // Game state (ref pour éviter re-renders dans la loop)
   const gameStateRef = useRef(null);
 
   // État UI (déclenche les re-renders)
   const [uiState, setUiState] = useState(null);
+
+  // showUpgrade via ref pour ne pas recréer tick à chaque fois
+  const showUpgradeRef = useRef(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [upgradeChoices, setUpgradeChoices] = useState([]);
+
+  // sfxEnabled en ref pour lecture dans tick sans dépendance
+  const sfxEnabledRef = useRef(sfxEnabled !== false);
+  useEffect(() => { sfxEnabledRef.current = sfxEnabled !== false; }, [sfxEnabled]);
 
   // Input joystick
   const inputRef = useRef({ dx: 0, dy: 0 });
@@ -44,6 +56,9 @@ export default function ArenaScreen() {
   // RAF handle
   const rafRef     = useRef(null);
   const lastTimeRef = useRef(null);
+
+  // Tutorial au premier run
+  const [showTutorial, setShowTutorial] = useState(totalRuns === 0);
 
   // Initialisation
   useEffect(() => {
@@ -55,7 +70,7 @@ export default function ArenaScreen() {
     };
   }, []);
 
-  // Game loop
+  // Game loop — tick sans dépendance à showUpgrade (lecture via ref)
   const tick = useCallback((timestamp) => {
     if (!gameStateRef.current) return;
     if (lastTimeRef.current === null) lastTimeRef.current = timestamp;
@@ -66,14 +81,26 @@ export default function ArenaScreen() {
     const s = gameStateRef.current;
     if (s.paused || s.pendingUpgrade || !s.alive) return;
 
+    const prevHp    = s.player.hp;
+    const prevKills = s.kills;
+
     const newState = updateGame(s, dt, inputRef.current);
     gameStateRef.current = newState;
 
-    // UI update throttled (chaque frame c'est ok, c'est juste setUiState)
+    // Retours haptiques
+    if (sfxEnabledRef.current) {
+      if (newState.player.hp < prevHp) {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
+      } else if (newState.kills > prevKills) {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      }
+    }
+
+    // UI update
     setUiState(extractUiState(newState));
 
     if (!newState.alive) {
-      const result = endRun({
+      endRun({
         shape: selectedShape,
         survivalTime: newState.elapsedTime,
         kills: newState.kills,
@@ -84,9 +111,9 @@ export default function ArenaScreen() {
       return;
     }
 
-    // Victoire à 5 minutes
-    if (newState.elapsedTime >= 300) {
-      const result = endRun({
+    // Victoire en mode standard uniquement
+    if (gameMode !== GAME_MODE.ENDLESS && newState.elapsedTime >= VICTORY_TIME) {
+      endRun({
         shape: selectedShape,
         survivalTime: newState.elapsedTime,
         kills: newState.kills,
@@ -98,16 +125,17 @@ export default function ArenaScreen() {
     }
 
     // Level up → afficher upgrade
-    if (newState.pendingUpgrade && !showUpgrade) {
+    if (newState.pendingUpgrade && !showUpgradeRef.current) {
       const choices = getUpgradeChoices(newState.activeUpgrades, 3);
       setUpgradeChoices(choices);
+      showUpgradeRef.current = true;
       setShowUpgrade(true);
       gameStateRef.current = { ...newState, paused: true };
       return;
     }
 
     rafRef.current = requestAnimationFrame(tick);
-  }, [showUpgrade]);
+  }, []); // aucune dépendance — lecture via refs
 
   // Démarrer la loop quand le composant est monté
   useEffect(() => {
@@ -153,6 +181,7 @@ export default function ArenaScreen() {
       pendingUpgrade: false,
       paused: false,
     };
+    showUpgradeRef.current = false;
     setShowUpgrade(false);
     lastTimeRef.current = null;
     rafRef.current = requestAnimationFrame(tick);
@@ -183,8 +212,16 @@ export default function ArenaScreen() {
           kills={uiState.kills}
           score={uiState.score}
           bossActive={uiState.bossActive}
+          ambushReady={uiState.ambushReady}
+          ambushTimer={uiState.ambushTimer}
+          gameMode={gameMode}
         />
       </View>
+
+      {/* Tutorial premier run */}
+      {showTutorial && (
+        <TutorialOverlay onDismiss={() => setShowTutorial(false)} />
+      )}
 
       {/* Joystick */}
       <View style={styles.joystickContainer} pointerEvents="box-none">
@@ -225,6 +262,8 @@ function extractUiState(s) {
     kills:       s.kills,
     score:       s.score,
     bossActive:  s.enemies.some(e => e.isBoss),
+    ambushReady: s.ambushReady,
+    ambushTimer: s.ambushTimer,
     renderState: {
       player:            s.player,
       enemies:           s.enemies,

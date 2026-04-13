@@ -2,7 +2,7 @@
  * BREACH — Slice navigation (phases de jeu)
  */
 
-import { GAME_PHASES } from '../../constants';
+import { GAME_PHASES, GAME_MODE } from '../../constants';
 
 export function createNavigationSlice(set, get) {
   return {
@@ -10,15 +10,17 @@ export function createNavigationSlice(set, get) {
 
     // Paramètres du run en cours
     selectedShape: 'triangle',
+    gameMode: GAME_MODE.STANDARD,
     runStartedAt: null,
 
     setPhase: (phase) => set({ phase }),
 
     goToMenu: () => set({ phase: GAME_PHASES.MENU }),
 
-    startRun: (shape) => set({
+    startRun: (shape, mode = GAME_MODE.STANDARD) => set({
       phase: GAME_PHASES.ARENA,
       selectedShape: shape,
+      gameMode: mode,
       runStartedAt: Date.now(),
     }),
 

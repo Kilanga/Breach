@@ -79,7 +79,15 @@ export function createMetaSlice(set, get) {
     purchaseClass: (shape) => {
       const meta = get().meta;
       if (meta.purchasedClasses.includes(shape)) return false;
-      set({ meta: { ...meta, purchasedClasses: [...meta.purchasedClasses, shape] } });
+      const cost = CLASS_INFO[shape]?.purchaseCost || 0;
+      if ((meta.talentPoints || 0) < cost) return false;
+      set({
+        meta: {
+          ...meta,
+          purchasedClasses: [...meta.purchasedClasses, shape],
+          talentPoints: (meta.talentPoints || 0) - cost,
+        },
+      });
       return true;
     },
 
