@@ -4,6 +4,9 @@
  */
 
 import React, { useEffect, useRef } from 'react';
+import * as Sentry from '@sentry/react-native';
+import { SENTRY_DSN } from './sentry.config';
+import { loadMeta, saveMeta } from './services/cloudSave';
 import { StatusBar } from 'expo-status-bar';
 import { View, StyleSheet, Animated } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -27,8 +30,33 @@ function screenGroup(phase) {
   return phase;
 }
 
+// Initialisation Sentry (une seule fois)
+if (SENTRY_DSN) {
+  Sentry.init({
+    dsn: SENTRY_DSN,
+    tracesSampleRate: 0.2,
+    enableAutoSessionTracking: true,
+  });
+}
+
 export default function App() {
   const phase = useGameStore(s => s.phase);
+  const meta = useGameStore(s => s.meta);
+  const setMeta = useGameStore(s => s.setState);
+
+  // Chargement cloud au démarrage
+  useEffect(() => {
+    (async () => {
+      const remoteMeta = await loadMeta();
+      if (remoteMeta) setMeta(state => ({ meta: { ...state.meta, ...remoteMeta } }));
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Sync cloud à chaque modif locale
+  useEffect(() => {
+    if (meta) saveMeta(meta).catch(() => {});
+  }, [meta]);
 
   // Fondu noir entre les écrans
   const fadeAnim = useRef(new Animated.Value(0)).current;

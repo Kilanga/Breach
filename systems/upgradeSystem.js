@@ -253,6 +253,20 @@ export function getUpgradeChoices(activeUpgrades, count = 3) {
     }
   }
 
+  // Fallback robuste : si le tirage pondéré n'a pas rempli toutes les slots,
+  // compléter avec des upgrades disponibles non encore utilisées.
+  if (selected.length < count) {
+    const remaining = available.filter(u => !usedIds.has(u.id));
+    while (selected.length < count && remaining.length > 0) {
+      const i = Math.floor(Math.random() * remaining.length);
+      const candidate = remaining.splice(i, 1)[0];
+      if (candidate.rarity === 'curse' && cursePicked >= 1) continue;
+      usedIds.add(candidate.id);
+      selected.push(candidate);
+      if (candidate.rarity === 'curse') cursePicked += 1;
+    }
+  }
+
   return selected;
 }
 

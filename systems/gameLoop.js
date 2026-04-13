@@ -180,7 +180,19 @@ export function updateGame(state, dt, input) {
   s = updateEnemyProjectiles(s, dt);
 
   // ── Collecte XP ──────────────────────────────────────────────────────────
+  const prevLevel = s.level;
   s = collectXP(s, dt);
+  // Prémonition : appliquer slow à tous les ennemis lors d'un level-up
+  if (hasUpgrade(s.activeUpgrades, 'premonition') && s.level > prevLevel) {
+    const premonition = s.activeUpgrades.find(u => u.id === 'premonition');
+    const slowAmount = (premonition?.effect?.amount) ?? 0.5;
+    const slowDuration = (premonition?.effect?.duration) ?? 2;
+    s.enemies = s.enemies.map(e => ({
+      ...e,
+      slowTimer: Math.max(e.slowTimer || 0, slowDuration),
+      slowAmount: slowAmount,
+    }));
+  }
 
   // ── Particules ────────────────────────────────────────────────────────────
   s.particles = s.particles
@@ -200,7 +212,7 @@ export function updateGame(state, dt, input) {
 
 function spawnEnemies(s, dt) {
   const waveConfig = getActiveWaveConfig(s.elapsedTime);
-  const scaling = getEnemyScaling(s.elapsedTime);
+  const scaling = getEnemyScaling(s.elapsedTime, s.gameMode);
   const timers = { ...s.waveTimers };
   const newEnemies = [...s.enemies];
 
@@ -293,6 +305,18 @@ function updateEnemies(s, dt) {
         }
         return enemy.hp <= 0 ? null : enemy;
       }
+      // Slow (ralentissement Oracle ou Prémonition)
+      if (enemy.slowTimer > 0) {
+        enemy.slowTimer = Math.max(0, enemy.slowTimer - dt);
+        // Appliquer le slow
+        enemy = { ...enemy, speed: (enemy.baseSpeed || enemy.speed) * (1 - (enemy.slowAmount || 0.5)) };
+        if (enemy.slowTimer <= 0) {
+          // Fin du slow, restaurer la vitesse
+          enemy = { ...enemy };
+          delete enemy.slowTimer;
+          delete enemy.slowAmount;
+        }
+      }
       // Freeze
       if (enemy.freezeTimer > 0) {
         enemy.freezeTimer = Math.max(0, enemy.freezeTimer - dt);
@@ -328,6 +352,12 @@ function updateEnemies(s, dt) {
         case 'boss_void':
           enemy = bossAI_void(enemy, player, dt, newEnemyProjs);
           break;
+        case 'boss_spiral':
+          enemy = bossAI_void(enemy, player, dt, newEnemyProjs);
+          break;
+        case 'boss_void':
+          enemy = bossAI_void(enemy, player, dt, newEnemyProjs);
+          break;
         case 'boss_cinder':
           enemy = bossAI_cinder(enemy, player, dt, newEnemyProjs);
           break;
@@ -340,10 +370,10 @@ function updateEnemies(s, dt) {
         case 'boss_rift':
           enemy = bossAI_rift(enemy, player, dt, newEnemyProjs);
           break;
-        default:
-          enemy = chasePlayer(enemy, player, dt);
+        case 'boss_prophet':
+          enemy = bossAI_prophet(enemy, player, dt, newEnemyProjs, newParticles);
+          break;
       }
-
       return enemy;
     })
     .filter(Boolean);
@@ -480,6 +510,60 @@ function summonerAI(enemy, player, dt, elapsedTime = 0) {
 }
 
 // ─── Comportements boss uniques ───────────────────────────────────────────────
+// Boss Le Prophète — zones d’anticipation + projectiles qui ralentissent
+function bossAI_prophet(enemy, player, dt, projs, particles) {
+  // Suit le joueur lentement
+  const e = chasePlayer(enemy, player, dt * 0.7);
+  let patternTimer = (e.patternTimer || 0) + dt;
+  let patternPhase = e.patternPhase || 0;
+  let telegraph = e.telegraph || null;
+
+  // Toutes les 2.5s : télégraphier une zone puis tirer un projectile lent
+  if (!telegraph && patternTimer >= 2.5) {
+    // Choisit une position anticipée du joueur
+    const predictT = 0.7; // anticipe 0.7s dans la direction du joueur
+    const dx = player.x - e.x;
+    const dy = player.y - e.y;
+    const len = Math.sqrt(dx*dx + dy*dy) || 1;
+    const px = player.x + (dx/len) * player.speed * SPEED_SCALE * predictT;
+    const py = player.y + (dy/len) * player.speed * SPEED_SCALE * predictT;
+    telegraph = { x: px, y: py, timer: 0 };
+    patternTimer = 0;
+    // Affiche une zone d’anticipation (particule visuelle)
+    particles.push({
+      id: makeId(), x: px, y: py, type: 'telegraph',
+      radius: 38, color: '#00FFD0', life: 0.7, maxLife: 0.7,
+      vx: 0, vy: 0,
+    });
+  }
+
+  // Après 0.7s de télégraph, tire un projectile lent
+  if (telegraph) {
+    telegraph.timer += dt;
+    if (telegraph.timer >= 0.7) {
+      // Tire un projectile lent qui ralentit le joueur
+      const dx = telegraph.x - e.x;
+      const dy = telegraph.y - e.y;
+      const len = Math.sqrt(dx*dx + dy*dy) || 1;
+      projs.push({
+        id: makeId(), x: e.x, y: e.y,
+        vx: (dx/len) * 2.2, vy: (dy/len) * 2.2,
+        damage: e.damage * 0.7, radius: 14, color: '#00FFD0',
+        owner: 'enemy', enemyId: e.id, lifeMs: 3200,
+        slow: 0.5, slowDuration: 2.5, visualType: 'prophet_orb',
+      });
+      telegraph = null;
+      patternPhase++;
+    }
+  }
+
+  return {
+    ...e,
+    patternTimer,
+    patternPhase,
+    telegraph,
+  };
+}
 
 // Boss L'Écho — spirale de 6 projectiles à angle progressif
 function bossAI_void(enemy, player, dt, projs) {
@@ -608,7 +692,17 @@ function updatePlayerProjectiles(s, dt) {
           const dx = e.x - proj.x;
           const dy = e.y - proj.y;
           if (Math.sqrt(dx*dx + dy*dy) < proj.radius + e.radius) {
-            return applyDamageToEnemy(e, proj.damage, s.activeUpgrades);
+            // Appliquer dégâts
+            let newE = applyDamageToEnemy(e, proj.damage, s.activeUpgrades);
+            // Appliquer slow si c'est une onde de prémonition (Oracle)
+            if (proj.visualType === 'premonition' && proj.slow && proj.slowDuration) {
+              newE = {
+                ...newE,
+                slowTimer: Math.max(newE.slowTimer || 0, proj.slowDuration),
+                slowAmount: proj.slow,
+              };
+            }
+            return newE;
           }
           return e;
         });

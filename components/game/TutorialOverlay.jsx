@@ -6,16 +6,18 @@
 
 import React, { useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { PALETTE } from '../../constants';
+import { Card, Title, Body, PALETTE } from '../ui';
+import { useT } from '../../utils/i18n';
 
 const HINTS = [
-  { icon: '🕹', text: 'Joystick en bas à gauche pour vous déplacer' },
-  { icon: '⚔', text: 'Les attaques sont automatiques' },
-  { icon: '✨', text: 'Collectez les orbes dorés pour monter en niveau' },
-  { icon: '🛡', text: 'En mode standard, survivez 5 minutes pour gagner' },
+  { icon: '🕹', key: 'tutorial_move' },
+  { icon: '⚔', key: 'tutorial_attack' },
+  { icon: '✨', key: 'tutorial_orbs' },
+  { icon: '🛡', key: 'tutorial_win' },
 ];
 
 export default function TutorialOverlay({ onDismiss }) {
+  const t = useT();
   useEffect(() => {
     const timer = setTimeout(onDismiss, 8000);
     return () => clearTimeout(timer);
@@ -23,16 +25,16 @@ export default function TutorialOverlay({ onDismiss }) {
 
   return (
     <TouchableOpacity style={styles.overlay} onPress={onDismiss} activeOpacity={1}>
-      <View style={styles.box}>
-        <Text style={styles.title}>Comment jouer</Text>
+      <Card style={{ alignItems: 'center', width: 300, gap: 10 }}>
+        <Title style={{ fontSize: 17, marginBottom: 6, textAlign: 'center' }}>{t('tutorial_title') || 'Comment jouer'}</Title>
         {HINTS.map((h, i) => (
-          <View key={i} style={styles.hintRow}>
-            <Text style={styles.hintIcon}>{h.icon}</Text>
-            <Text style={styles.hintText}>{h.text}</Text>
+          <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Body style={{ fontSize: 20, width: 28, textAlign: 'center' }}>{h.icon}</Body>
+            <Body style={{ fontSize: 13, color: PALETTE.textDim, flex: 1, lineHeight: 18 }}>{t(h.key) || ''}</Body>
           </View>
         ))}
-        <Text style={styles.dismiss}>Touchez pour fermer</Text>
-      </View>
+        <Body style={{ fontSize: 10, color: PALETTE.textDim, textAlign: 'center', marginTop: 6, letterSpacing: 0.5 }}>{t('tutorial_dismiss') || 'Touchez pour fermer'}</Body>
+      </Card>
     </TouchableOpacity>
   );
 }
@@ -44,35 +46,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-start',
     paddingTop: 60,
-  },
-  box: {
-    backgroundColor: PALETTE.bgCard,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: PALETTE.borderLight,
-    padding: 20,
-    width: 300,
-    gap: 10,
-  },
-  title: {
-    fontSize: 17,
-    fontWeight: 'bold',
-    color: PALETTE.textPrimary,
-    marginBottom: 6,
-    textAlign: 'center',
-  },
-  hintRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  hintIcon: { fontSize: 20, width: 28, textAlign: 'center' },
-  hintText: { fontSize: 13, color: PALETTE.textMuted, flex: 1, lineHeight: 18 },
-  dismiss: {
-    fontSize: 10,
-    color: PALETTE.textDim,
-    textAlign: 'center',
-    marginTop: 6,
-    letterSpacing: 0.5,
   },
 });

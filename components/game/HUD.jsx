@@ -25,6 +25,7 @@ const HUD = memo(({ player, level, xp, elapsedTime, kills, score, bossActive,
   const xpNeeded = xpForLevel(level);
   const xpPct  = Math.min(1, xp / xpNeeded);
   const classInfo = CLASS_INFO[player.shape] || {};
+  const fontScale = 1; // Assuming a default fontScale, replace with actual logic if needed
   const classColor = classInfo.color || PALETTE.textPrimary;
   const isEndless = gameMode === GAME_MODE.ENDLESS;
   const ambushCooldown = classInfo.ambushCooldown || 4;

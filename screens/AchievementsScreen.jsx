@@ -3,11 +3,12 @@
  */
 
 import React from 'react';
-import { View, Text, ScrollView, StyleSheet, Dimensions } from 'react-native';
+import { View, ScrollView, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { TouchableOpacity } from 'react-native';
 import useGameStore from '../store/gameStore';
-import { PALETTE, PERMANENT_UPGRADES_CATALOG } from '../constants';
+import { Card, Title, Body, Button, PALETTE } from '../components/ui';
+import { useT } from '../utils/i18n';
 
 const { width: W } = Dimensions.get('window');
 
@@ -29,54 +30,35 @@ const ACHIEVEMENTS = [
 export default function AchievementsScreen() {
   const goToMenu = useGameStore(s => s.goToMenu);
   const meta     = useGameStore(s => s.meta);
+  const t = useT();
 
   const unlocked  = ACHIEVEMENTS.filter(a => a.check(meta));
   const locked    = ACHIEVEMENTS.filter(a => !a.check(meta));
 
   return (
-    <SafeAreaView style={styles.root}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={goToMenu} style={styles.backBtn}>
-          <Text style={styles.backText}>← Menu</Text>
-        </TouchableOpacity>
-        <Text style={styles.title}>Succès</Text>
-        <Text style={styles.count}>{unlocked.length}/{ACHIEVEMENTS.length}</Text>
-      </View>
-
-      <ScrollView contentContainerStyle={styles.list}>
-        {unlocked.map(a => <AchRow key={a.id} a={a} done />)}
-        {locked.map(a => <AchRow key={a.id} a={a} done={false} />)}
+    <SafeAreaView style={{ flex: 1, backgroundColor: PALETTE.bg }}>
+      <Card style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <Button label={t('back_menu') || '← Menu'} onPress={goToMenu} style={{ minWidth: 80, paddingVertical: 8 }} />
+        <Title style={{ fontSize: 22 }}>{t('achievements_title') || 'Succès'}</Title>
+        <Body style={{ color: PALETTE.textDim }}>{unlocked.length}/{ACHIEVEMENTS.length}</Body>
+      </Card>
+      <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
+        {unlocked.map(a => <AchRow key={a.id} a={a} done t={t} />)}
+        {locked.map(a => <AchRow key={a.id} a={a} done={false} t={t} />)}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function AchRow({ a, done }) {
+function AchRow({ a, done, t }) {
   return (
-    <View style={[styles.row, done && styles.rowDone]}>
-      <Text style={styles.icon}>{done ? a.icon : '🔒'}</Text>
+    <Card style={{ flexDirection: 'row', alignItems: 'center', gap: 12, borderColor: done ? '#FFCC4440' : PALETTE.border, backgroundColor: done ? 'rgba(255,204,68,0.05)' : PALETTE.bgCard, padding: 14 }}>
+      <Body style={{ fontSize: 28, width: 36, textAlign: 'center' }}>{done ? a.icon : '🔒'}</Body>
       <View style={{ flex: 1 }}>
-        <Text style={[styles.achTitle, !done && styles.locked]}>{done ? a.title : '???'}</Text>
-        <Text style={styles.achDesc}>{a.desc}</Text>
+        <Title style={{ fontSize: 14, color: done ? PALETTE.textPrimary : PALETTE.textDim }}>{done ? a.title : '???'}</Title>
+        <Body style={{ fontSize: 12, color: PALETTE.textDim }}>{a.desc}</Body>
       </View>
-      {done && <Text style={styles.check}>✓</Text>}
-    </View>
+      {done && <Body style={{ color: '#FFCC44', fontSize: 18, fontWeight: 'bold' }}>✓</Body>}
+    </Card>
   );
 }
-
-const styles = StyleSheet.create({
-  root:    { flex: 1, backgroundColor: PALETTE.bg },
-  header:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, paddingTop: 12 },
-  backBtn: { padding: 8 },
-  backText:{ color: PALETTE.textMuted, fontSize: 14 },
-  title:   { fontSize: 20, fontWeight: 'bold', color: PALETTE.textPrimary },
-  count:   { fontSize: 14, color: PALETTE.textMuted },
-  list:    { padding: 16, gap: 10 },
-  row:     { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: PALETTE.bgCard, borderRadius: 12, borderWidth: 1, borderColor: PALETTE.border, padding: 14 },
-  rowDone: { borderColor: '#FFCC4440', backgroundColor: 'rgba(255,204,68,0.05)' },
-  icon:    { fontSize: 28, width: 36, textAlign: 'center' },
-  achTitle:{ fontSize: 14, fontWeight: 'bold', color: PALETTE.textPrimary },
-  achDesc: { fontSize: 12, color: PALETTE.textMuted, marginTop: 2 },
-  locked:  { color: PALETTE.textDim },
-  check:   { color: '#FFCC44', fontSize: 18, fontWeight: 'bold' },
-});

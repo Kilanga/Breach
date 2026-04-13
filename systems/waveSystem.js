@@ -122,11 +122,20 @@ export function getEnemyScaling(elapsedSeconds) {
   // Endless bonus : +25% par minute après VICTORY_TIME (5 min)
   const endlessMinutes = Math.max(0, (elapsedSeconds - VICTORY_TIME) / 60);
   const endlessBonus   = endlessMinutes * 0.25;
-  return {
-    hpMult:     1 + minute * 0.35 + endlessBonus,
-    damageMult: 1 + minute * 0.2  + endlessBonus,
-    speedMult:  1 + Math.min(minute * 0.1 + endlessBonus * 0.4, 1.5), // cap +150%
-  };
+  let hpMult = 1 + minute * 0.35 + endlessBonus;
+  let damageMult = 1 + minute * 0.2 + endlessBonus;
+  let speedMult = 1 + Math.min(minute * 0.1 + endlessBonus * 0.4, 1.5);
+  // Modificateurs selon le mode de jeu
+  if (arguments[1] === 'hard') {
+    hpMult *= 1.5;
+    damageMult *= 1.5;
+    speedMult *= 1.15;
+  } else if (arguments[1] === 'prestige') {
+    hpMult *= 2.0;
+    damageMult *= 2.0;
+    speedMult *= 1.25;
+  }
+  return { hpMult, damageMult, speedMult };
 }
 
 /**

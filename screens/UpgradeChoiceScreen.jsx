@@ -5,53 +5,59 @@
 
 import React, { memo } from 'react';
 import { View, Text, ScrollView, StyleSheet, Dimensions } from 'react-native';
-import { PALETTE } from '../constants';
+import { PALETTE, PALETTE_DALTONISM } from '../constants';
 import UpgradeCard from '../components/ui/UpgradeCard';
 import { getBuildRecommendation, getSynergySummary } from '../systems/upgradeSystem';
+import { Card, Title, Body, Button } from '../components/ui';
+import { useT } from '../utils/i18n';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
-const UpgradeChoiceScreen = memo(({ choices, activeUpgrades, level, onSelect }) => {
+const UpgradeChoiceScreen = memo(({ choices = [], activeUpgrades, level, onSelect, onSkip, colorBlindMode = false }) => {
   const recommendation = getBuildRecommendation(activeUpgrades);
   const synergies      = getSynergySummary(activeUpgrades);
+  const hasChoices = choices.length > 0;
+  const palette = colorBlindMode ? PALETTE_DALTONISM : PALETTE;
+  const t = useT();
 
   return (
-    <View style={styles.overlay}>
-      <View style={styles.panel}>
-        {/* Header */}
-        <Text style={styles.levelUp}>⬆ NIVEAU {level}</Text>
-        <Text style={styles.subtitle}>Choisissez un upgrade</Text>
-
-        {/* Synergies actives */}
+    <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <Card style={{ width: Math.min(SCREEN_W - 32, 420), maxHeight: '90%', padding: 20 }}>
+        <Title style={{ fontSize: 24, color: palette.xp, textAlign: 'center', marginBottom: 4, letterSpacing: 2 }}>⬆ {t('upgrade_level') || 'NIVEAU'} {level}</Title>
+        <Body style={{ fontSize: 13, color: palette.textDim, textAlign: 'center', marginBottom: 10 }}>{hasChoices ? (t('upgrade_choose') || 'Choisissez un upgrade') : (t('upgrade_none') || 'Aucune amélioration disponible')}</Body>
         {synergies.some(s => s.active) && (
-          <View style={styles.synRow}>
+          <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8, marginBottom: 8 }}>
             {synergies.filter(s => s.count > 0).map(s => (
-              <Text key={s.color} style={[styles.synBadge, s.active && styles.synBadgeActive]}>
+              <Body key={s.color} style={{ fontSize: 12, color: s.active ? '#FFCC44' : palette.textDim, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: s.active ? 'rgba(255,204,68,0.15)' : 'rgba(255,255,255,0.05)' }}>
                 {synergyEmoji(s.color)} {s.count}
-              </Text>
+              </Body>
             ))}
           </View>
         )}
-
-        {/* Recommandation */}
-        {recommendation && (
-          <Text style={styles.rec}>
-            Build conseillé : {colorLabel(recommendation.color)} ({recommendation.count} upgrades)
-          </Text>
+        {hasChoices && recommendation && (
+          <Body style={{ fontSize: 11, color: palette.textDim, textAlign: 'center', marginBottom: 10, fontStyle: 'italic' }}>
+            {t('upgrade_recommend') || 'Build conseillé'} : {colorLabel(recommendation.color)} ({recommendation.count} upgrades)
+          </Body>
         )}
-
-        {/* Cartes */}
-        <ScrollView showsVerticalScrollIndicator={false} style={styles.scroll}>
-          {choices.map(upgrade => (
-            <UpgradeCard
-              key={upgrade.id}
-              upgrade={upgrade}
-              onSelect={onSelect}
-              synergy={activeUpgrades.filter(u => u.color === upgrade.color).length >= 3 && upgrade.rarity !== 'curse'}
-            />
-          ))}
-        </ScrollView>
-      </View>
+        {hasChoices ? (
+          <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
+            {choices.map(upgrade => (
+              <UpgradeCard
+                key={upgrade.id}
+                upgrade={upgrade}
+                onSelect={onSelect}
+                synergy={activeUpgrades.filter(u => u.color === upgrade.color).length >= 3 && upgrade.rarity !== 'curse'}
+                palette={palette}
+              />
+            ))}
+          </ScrollView>
+        ) : (
+          <View style={{ paddingTop: 16, gap: 12 }}>
+            <Body style={{ color: palette.textDim, fontSize: 13, textAlign: 'center', lineHeight: 20 }}>{t('upgrade_limit') || 'Tu as atteint la limite des upgrades disponibles pour cette run.'}</Body>
+            <Button label={t('continue') || 'Continuer'} onPress={onSkip} style={{ alignSelf: 'center', paddingHorizontal: 18, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: palette.borderLight, backgroundColor: 'rgba(255,255,255,0.06)' }} />
+          </View>
+        )}
+      </Card>
     </View>
   );
 });
@@ -133,6 +139,30 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   scroll: { flex: 1 },
+  emptyWrap: {
+    paddingTop: 16,
+    gap: 12,
+  },
+  emptyText: {
+    color: PALETTE.textMuted,
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  emptyBtn: {
+    alignSelf: 'center',
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: PALETTE.borderLight,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  emptyBtnText: {
+    color: PALETTE.textPrimary,
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
 });
 
 export default UpgradeChoiceScreen;

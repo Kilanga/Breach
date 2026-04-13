@@ -6,10 +6,10 @@
  */
 
 import React, { memo } from 'react';
-import Svg, { Circle, Polygon, Rect, G, Line } from 'react-native-svg';
+import Svg, { Circle, Polygon, Rect, G, Line, Text as SvgText } from 'react-native-svg';
 import { PALETTE, CLASS_INFO, PLAYER_RADIUS } from '../../constants';
 
-const ArenaRenderer = memo(({ gameState, arenaWidth, arenaHeight, scaleX, scaleY }) => {
+const ArenaRenderer = memo(({ gameState, arenaWidth, arenaHeight, scaleX, scaleY, palette = PALETTE }) => {
   if (!gameState) return null;
   const { player, enemies, playerProjectiles, enemyProjectiles,
           xpOrbs, particles, activeUpgrades = [], chainBoostActive = false } = gameState;
@@ -43,7 +43,7 @@ const ArenaRenderer = memo(({ gameState, arenaWidth, arenaHeight, scaleX, scaleY
   return (
     <Svg width={vw} height={vh} viewBox={`0 0 ${arenaWidth} ${arenaHeight}`}>
       {/* Fond */}
-      <Rect x={0} y={0} width={arenaWidth} height={arenaHeight} fill={PALETTE.bg} />
+      <Rect x={0} y={0} width={arenaWidth} height={arenaHeight} fill={palette.bg} />
       {/* Grille décorative */}
       <GridLines w={arenaWidth} h={arenaHeight} />
 
@@ -52,7 +52,7 @@ const ArenaRenderer = memo(({ gameState, arenaWidth, arenaHeight, scaleX, scaleY
       {hasMagnet && (
         <Circle
           cx={player.x} cy={player.y} r={xpRadius}
-          fill="none" stroke={PALETTE.xp || '#FFDD44'} strokeWidth={1}
+          fill="none" stroke={palette.xp || '#FFDD44'} strokeWidth={1}
           strokeDasharray="4,6" opacity={0.20}
         />
       )}
@@ -258,14 +258,38 @@ function EnemyShape({ enemy }) {
 
   // Couleur modifiée si statut
   let overlayColor = null;
-  if (freezeTimer > 0) overlayColor = '#44CCFF';
-  if (burnTimer   > 0) overlayColor = '#FF6600';
-  if (stunTimer   > 0) overlayColor = '#AAAAAA';
+  let statusIcon = null;
+  if (freezeTimer > 0) {
+    overlayColor = '#44CCFF';
+    statusIcon = '❄️';
+  }
+  if (burnTimer > 0) {
+    overlayColor = '#FF6600';
+    statusIcon = '🔥';
+  }
+  if (stunTimer > 0) {
+    overlayColor = '#AAAAAA';
+    statusIcon = '⚡';
+  }
 
   return (
     <G>
       <Circle cx={x} cy={y} r={radius} fill={color} opacity={0.9} />
-      {overlayColor && <Circle cx={x} cy={y} r={radius} fill={overlayColor} opacity={0.35} />}
+      {overlayColor && <Circle cx={x} cy={y} r={radius} fill={overlayColor} opacity={0.45} />}
+      {/* Icône de statut flottante */}
+      {statusIcon && (
+        <SvgText
+          x={x}
+          y={y - radius - 14}
+          fontSize={radius * 1.2}
+          fontWeight="bold"
+          textAnchor="middle"
+          alignmentBaseline="middle"
+          opacity={0.95}
+        >
+          {statusIcon}
+        </SvgText>
+      )}
       {/* HP bar */}
       <Rect x={x - radius} y={y - radius - 8} width={radius * 2} height={3} rx={1.5} fill="rgba(255,255,255,0.15)" />
       <Rect x={x - radius} y={y - radius - 8} width={radius * 2 * hpPct} height={3} rx={1.5} fill={hpPct > 0.5 ? '#44FF88' : '#FF4444'} />

@@ -23,10 +23,11 @@ const COLOR_BORDER = {
   [UPGRADE_COLORS.CURSE]: '#AA22AA',
 };
 
-const UpgradeCard = memo(({ upgrade, onSelect, synergy }) => {
-  const bg      = COLOR_BG[upgrade.color]     || '#FFFFFF10';
-  const border  = COLOR_BORDER[upgrade.color] || '#FFFFFF33';
-  const rarityC = RARITY_COLOR[upgrade.rarity] || '#888';
+
+const UpgradeCard = memo(({ upgrade, onSelect, synergy, palette = PALETTE }) => {
+  const bg      = COLOR_BG[upgrade.color]     || palette.bgCard || '#FFFFFF10';
+  const border  = COLOR_BORDER[upgrade.color] || palette.border || '#FFFFFF33';
+  const rarityC = RARITY_COLOR[upgrade.rarity] || palette.textMuted || '#888';
 
   return (
     <TouchableOpacity

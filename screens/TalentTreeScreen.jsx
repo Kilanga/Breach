@@ -8,54 +8,50 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions } from
 import { SafeAreaView } from 'react-native-safe-area-context';
 import useGameStore from '../store/gameStore';
 import { PALETTE, PERMANENT_UPGRADES_CATALOG } from '../constants';
+import { Card, Title, Body, Button } from '../components/ui';
+import { useT } from '../utils/i18n';
 
 const { width: W } = Dimensions.get('window');
 
 export default function TalentTreeScreen() {
   const goToMenu           = useGameStore(s => s.goToMenu);
   const meta               = useGameStore(s => s.meta);
+  const t = useT();
 
   const unlockedIds = meta.permanentUpgrades || [];
 
   return (
-    <SafeAreaView style={styles.root}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={goToMenu} style={styles.backBtn}>
-          <Text style={styles.backText}>← Menu</Text>
-        </TouchableOpacity>
-        <Text style={styles.title}>Améliorations Permanentes</Text>
+    <SafeAreaView style={{ flex: 1, backgroundColor: PALETTE.bg }}>
+      <Card style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <Button label={t('back_menu') || '← Menu'} onPress={goToMenu} style={{ minWidth: 80, paddingVertical: 8 }} />
+        <Title style={{ fontSize: 18 }}>{t('talenttree_title') || 'Améliorations Permanentes'}</Title>
         <View style={{ width: 60 }} />
-      </View>
-
-      {/* Fragments */}
-      <View style={styles.fragmentsRow}>
-        <Text style={styles.fragIcon}>🔸</Text>
-        <Text style={styles.fragLabel}>Fragments du Rift</Text>
-        <Text style={styles.fragValue}>{meta.talentPoints || 0}</Text>
-      </View>
-      <Text style={styles.fragHint}>Les fragments sont gagnés automatiquement en fin de run (1 toutes les 10s + 1/kill, divisé par 5 pour les points de talent).</Text>
-
-      <ScrollView contentContainerStyle={styles.list}>
+      </Card>
+      <Card style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(255,136,68,0.1)', borderRadius: 10, marginBottom: 4 }}>
+        <Body style={{ fontSize: 20 }}>🔸</Body>
+        <Body style={{ flex: 1, fontSize: 14, color: PALETTE.gold }}>{t('talenttree_fragments') || 'Fragments du Rift'}</Body>
+        <Title style={{ fontSize: 22, color: PALETTE.gold }}>{meta.talentPoints || 0}</Title>
+      </Card>
+      <Body style={{ fontSize: 11, color: PALETTE.textDim, marginHorizontal: 8, marginBottom: 12, lineHeight: 16 }}>
+        {t('talenttree_hint') || 'Les fragments sont gagnés automatiquement en fin de run (1 toutes les 10s + 1/kill, divisé par 5 pour les points de talent).'}
+      </Body>
+      <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
         {PERMANENT_UPGRADES_CATALOG.map(item => {
           const isUnlocked = unlockedIds.includes(item.id);
           const condMet = isConditionMet(item.unlockCondition, meta);
           return (
-            <View key={item.id} style={[styles.card, isUnlocked && styles.cardUnlocked, !condMet && !isUnlocked && styles.cardLocked]}>
-              <Text style={styles.icon}>{isUnlocked ? item.icon : condMet ? item.icon : '🔒'}</Text>
+            <Card key={item.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, borderColor: isUnlocked ? '#44FF8840' : PALETTE.border, backgroundColor: isUnlocked ? 'rgba(68,255,136,0.04)' : PALETTE.bgCard, opacity: !condMet && !isUnlocked ? 0.5 : 1, padding: 14 }}>
+              <Body style={{ fontSize: 26, width: 34, textAlign: 'center' }}>{isUnlocked ? item.icon : condMet ? item.icon : '🔒'}</Body>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.name, !condMet && !isUnlocked && styles.lockedText]}>
-                  {isUnlocked || condMet ? item.name : '???'}
-                </Text>
-                <Text style={styles.desc}>
-                  {isUnlocked || condMet ? item.desc : item.unlockCondition?.desc || 'Inconnu'}
-                </Text>
+                <Title style={{ fontSize: 14, color: !condMet && !isUnlocked ? PALETTE.textDim : PALETTE.textPrimary }}>{isUnlocked || condMet ? item.name : '???'}</Title>
+                <Body style={{ fontSize: 12, color: PALETTE.textDim, marginTop: 2 }}>{isUnlocked || condMet ? item.desc : item.unlockCondition?.desc || 'Inconnu'}</Body>
               </View>
               {isUnlocked
-                ? <Text style={styles.check}>✓</Text>
-                : condMet ? <Text style={styles.available}>Débloqué!</Text>
-                : <Text style={styles.locked}>Verrouillé</Text>
+                ? <Body style={{ color: '#44FF88', fontSize: 18, fontWeight: 'bold' }}>✓</Body>
+                : condMet ? <Body style={{ color: '#FFCC44', fontSize: 11, fontWeight: 'bold' }}>{t('talenttree_available') || 'Débloqué!'}</Body>
+                : <Body style={{ color: PALETTE.textDim, fontSize: 11 }}>{t('talenttree_locked') || 'Verrouillé'}</Body>
               }
-            </View>
+            </Card>
           );
         })}
       </ScrollView>
@@ -71,27 +67,3 @@ function isConditionMet(cond, meta) {
   if (cond.type === 'shape_win') return (meta.shapeStats?.[cond.shape]?.wins || 0) >= 1;
   return false;
 }
-
-const styles = StyleSheet.create({
-  root:     { flex: 1, backgroundColor: PALETTE.bg },
-  header:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16 },
-  backBtn:  { padding: 8 },
-  backText: { color: PALETTE.textMuted, fontSize: 14 },
-  title:    { fontSize: 17, fontWeight: 'bold', color: PALETTE.textPrimary },
-  fragmentsRow: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(255,136,68,0.1)', borderRadius: 10, marginHorizontal: 16, padding: 12, marginBottom: 4 },
-  fragIcon:  { fontSize: 20 },
-  fragLabel: { flex: 1, fontSize: 14, color: PALETTE.fragment },
-  fragValue: { fontSize: 22, fontWeight: 'bold', color: PALETTE.fragment },
-  fragHint:  { fontSize: 11, color: PALETTE.textDim, marginHorizontal: 16, marginBottom: 12, lineHeight: 16 },
-  list:     { padding: 16, gap: 10 },
-  card:     { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: PALETTE.bgCard, borderRadius: 12, borderWidth: 1, borderColor: PALETTE.border, padding: 14 },
-  cardUnlocked: { borderColor: '#44FF8840', backgroundColor: 'rgba(68,255,136,0.04)' },
-  cardLocked:   { opacity: 0.5 },
-  icon:     { fontSize: 26, width: 34, textAlign: 'center' },
-  name:     { fontSize: 14, fontWeight: 'bold', color: PALETTE.textPrimary },
-  desc:     { fontSize: 12, color: PALETTE.textMuted, marginTop: 2 },
-  lockedText: { color: PALETTE.textDim },
-  check:    { color: '#44FF88', fontSize: 18, fontWeight: 'bold' },
-  available:{ color: '#FFCC44', fontSize: 11, fontWeight: 'bold' },
-  locked:   { color: PALETTE.textDim, fontSize: 11 },
-});

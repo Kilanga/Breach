@@ -2,11 +2,13 @@
  * BREACH — GameOverScreen
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
+import { submitScore } from '../services/leaderboard';
 import { View, Text, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import useGameStore from '../store/gameStore';
-import { PALETTE } from '../constants';
+import { Card, Title, Body, Button, PALETTE } from '../components/ui';
+import { useT } from '../utils/i18n';
 
 const { width: W } = Dimensions.get('window');
 
@@ -14,55 +16,65 @@ export default function GameOverScreen() {
   const goToMenu       = useGameStore(s => s.goToMenu);
   const goToShapeSelect = useGameStore(s => s.goToShapeSelect);
   const meta           = useGameStore(s => s.meta);
+  const t = useT();
 
   const lastRun = meta.runHistory?.[0];
+
+  useEffect(() => {
+    if (lastRun && lastRun.score > 0) {
+      submitScore({
+        playerName: meta.playerName || 'Anonyme',
+        score: lastRun.score,
+        meta: {
+          shape: lastRun.shape,
+          survivalTime: lastRun.survivalTime,
+          kills: lastRun.kills,
+          level: lastRun.level,
+          date: lastRun.date,
+        },
+      }).catch(() => {});
+    }
+  }, [lastRun, meta.playerName]);
   const bestTime = meta.bestSurvivalTime || 0;
   const bm = Math.floor(bestTime / 60);
   const bs = Math.floor(bestTime % 60);
 
   return (
-    <SafeAreaView style={styles.root}>
-      <View style={styles.panel}>
-        <Text style={styles.title}>☠ MORT</Text>
-        <Text style={styles.sub}>Le Breach t'a consumé...</Text>
-
+    <SafeAreaView style={{ flex: 1, backgroundColor: PALETTE.bg, alignItems: 'center', justifyContent: 'center' }}>
+      <Card style={{ width: '100%', maxWidth: 380, alignItems: 'center', borderColor: '#FF4455', padding: 28 }}>
+        <Title style={{ fontSize: 40, color: '#FF4455', marginBottom: 8 }}>☠ {t('gameover_title') || 'MORT'}</Title>
+        <Body style={{ fontSize: 15, color: PALETTE.textDim, marginBottom: 24 }}>{t('gameover_sub') || "Le Breach t'a consumé..."}</Body>
         {lastRun && (
-          <View style={styles.stats}>
-            <StatRow label="Temps de survie" value={formatTime(lastRun.survivalTime)} />
-            <StatRow label="Score"           value={(lastRun.score || 0).toLocaleString()} />
-            <StatRow label="Niveau atteint"  value={`Niv. ${lastRun.level || 1}`} />
-            <StatRow label="Ennemis tués"    value={lastRun.kills} />
-            <StatRow label="Classe"          value={lastRun.shape} />
+          <View style={{ width: '100%', gap: 10, marginBottom: 20 }}>
+            <StatRow label={t('stat_survival_time') || 'Temps de survie'} value={formatTime(lastRun.survivalTime)} />
+            <StatRow label={t('stat_score') || 'Score'} value={(lastRun.score || 0).toLocaleString()} />
+            <StatRow label={t('stat_level') || 'Niveau atteint'} value={`Niv. ${lastRun.level || 1}`} />
+            <StatRow label={t('stat_kills') || 'Ennemis tués'} value={lastRun.kills} />
+            <StatRow label={t('stat_class') || 'Classe'} value={lastRun.shape} />
           </View>
         )}
-
-        <View style={styles.bestRow}>
-          <Text style={styles.bestLabel}>🏆 Meilleur temps</Text>
-          <Text style={styles.bestValue}>{bm}:{bs.toString().padStart(2,'0')}</Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginBottom: 8 }}>
+          <Body style={{ color: PALETTE.textDim }}>{t('stat_best_time') || '🏆 Meilleur temps'}</Body>
+          <Body style={{ color: PALETTE.textPrimary }}>{bm}:{bs.toString().padStart(2,'0')}</Body>
         </View>
         {meta.bestScore > 0 && (
-          <View style={[styles.bestRow, { marginTop: -12, borderColor: '#FFCC4440' }]}>
-            <Text style={styles.bestLabel}>🥇 Meilleur score</Text>
-            <Text style={styles.bestValue}>{(meta.bestScore).toLocaleString()}</Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: -12, borderColor: '#FFCC4440' }}>
+            <Body style={{ color: '#FFCC44' }}>{t('stat_best_score') || '🥇 Meilleur score'}</Body>
+            <Body style={{ color: PALETTE.textPrimary }}>{(meta.bestScore).toLocaleString()}</Body>
           </View>
         )}
-
-        <TouchableOpacity style={styles.btn} onPress={goToShapeSelect} activeOpacity={0.8}>
-          <Text style={styles.btnText}>🔄 Rejouer</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.btnSecondary} onPress={goToMenu} activeOpacity={0.8}>
-          <Text style={styles.btnSecText}>← Menu</Text>
-        </TouchableOpacity>
-      </View>
+        <Button label={t('gameover_replay') || '🔄 Rejouer'} primary onPress={goToShapeSelect} style={{ marginTop: 24 }} />
+        <Button label={t('back_menu') || '← Menu'} onPress={goToMenu} style={{ marginTop: 8 }} />
+      </Card>
     </SafeAreaView>
   );
 }
 
 function StatRow({ label, value }) {
   return (
-    <View style={styles.statRow}>
-      <Text style={styles.statLabel}>{label}</Text>
-      <Text style={styles.statValue}>{value}</Text>
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderColor: PALETTE.border }}>
+      <Body style={{ color: PALETTE.textDim }}>{label}</Body>
+      <Body style={{ color: PALETTE.textPrimary }}>{value}</Body>
     </View>
   );
 }
@@ -72,21 +84,3 @@ function formatTime(s) {
   const sec = Math.floor(s % 60);
   return `${m}:${sec.toString().padStart(2, '0')}`;
 }
-
-const styles = StyleSheet.create({
-  root:     { flex: 1, backgroundColor: PALETTE.bg, alignItems: 'center', justifyContent: 'center' },
-  panel:    { width: Math.min(W - 40, 380), backgroundColor: PALETTE.bgCard, borderRadius: 16, borderWidth: 1, borderColor: '#FF4455', padding: 28, alignItems: 'center' },
-  title:    { fontSize: 48, fontWeight: 'bold', color: '#FF4455', marginBottom: 8 },
-  sub:      { fontSize: 13, color: PALETTE.textMuted, marginBottom: 24 },
-  stats:    { width: '100%', gap: 10, marginBottom: 20 },
-  statRow:  { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderColor: PALETTE.border },
-  statLabel:{ fontSize: 13, color: PALETTE.textMuted },
-  statValue:{ fontSize: 13, color: PALETTE.textPrimary, fontWeight: 'bold' },
-  bestRow:  { flexDirection: 'row', gap: 8, alignItems: 'center', marginBottom: 24, backgroundColor: 'rgba(255,204,68,0.1)', borderRadius: 8, padding: 10, width: '100%', justifyContent: 'space-between' },
-  bestLabel:{ fontSize: 13, color: '#FFCC44' },
-  bestValue:{ fontSize: 18, fontWeight: 'bold', color: '#FFCC44' },
-  btn:      { backgroundColor: '#1A3A2A', borderRadius: 10, borderWidth: 1, borderColor: PALETTE.hp, padding: 16, width: '100%', alignItems: 'center', marginBottom: 10 },
-  btnText:  { fontSize: 16, color: PALETTE.hp, fontWeight: 'bold' },
-  btnSecondary: { padding: 12 },
-  btnSecText:   { color: PALETTE.textMuted, fontSize: 14 },
-});

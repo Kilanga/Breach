@@ -5,6 +5,7 @@
 import { PERMANENT_UPGRADES_CATALOG } from '../../constants';
 import { computePlayerStats } from '../../systems/upgradeSystem';
 import { CLASS_INFO } from '../../constants';
+import { trackEvent } from '../../utils/telemetry';
 
 export const INITIAL_META = {
   permanentUpgrades:  [],
@@ -38,6 +39,16 @@ export function createMetaSlice(set, get) {
 
     // ── Fin de run ──────────────────────────────────────────────────────────
     endRun: ({ shape, survivalTime, kills, won, score, level, activeUpgrades }) => {
+      // Instrumentation télémétrie
+      trackEvent('run_end', {
+        shape,
+        survivalTime,
+        kills,
+        won,
+        score,
+        level,
+        activeUpgrades,
+      });
       const meta = get().meta;
       const isWin = won || survivalTime >= 300; // 5 minutes = victoire
 
@@ -127,6 +138,8 @@ export function createMetaSlice(set, get) {
     setMusicVolume:  (v) => set(s => ({ meta: { ...s.meta, musicVolume:  v } })),
     setSfxVolume:    (v) => set(s => ({ meta: { ...s.meta, sfxVolume:    v } })),
     setPlayerName:   (v) => set(s => ({ meta: { ...s.meta, playerName:   v } })),
+    setColorBlindMode: (v) => set(s => ({ meta: { ...s.meta, colorBlindMode: v } })),
+    setLargeText: (v) => set(s => ({ meta: { ...s.meta, largeText: v } })),
   };
 }
 

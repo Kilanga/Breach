@@ -22,7 +22,29 @@ function vecToNearest(player, enemies) {
   return nearest;
 }
 
-// ─── Attaques par classe ──────────────────────────────────────────────────────
+
+// ─── Attaque Oracle (onde de prémonition) ─────────────────────────────────────
+/**
+ * Oracle — onde qui ralentit les ennemis proches
+ */
+export function fireOracle(player, enemies, upgrades) {
+  const info = CLASS_INFO.octagon;
+  // Onde visuelle, applique un effet de slow aux ennemis dans le rayon
+  return [{
+    id: makeId(),
+    x: player.x, y: player.y,
+    vx: 0, vy: 0,
+    damage: player.attack * 0.7, // dégâts modérés
+    radius: info.premonitionRadius,
+    aoe: true,
+    color: info.color,
+    owner: 'player',
+    lifeMs: 400,
+    visualType: 'premonition',
+    slow: info.slowAmount,
+    slowDuration: info.slowDuration,
+  }];
+}
 
 /**
  * Assassin — projectile linéaire vers l'ennemi le plus proche (pierce)
@@ -192,6 +214,7 @@ export function getAttackFn(shape) {
     case 'hexagon':  return fireColosse;
     case 'shadow':   return fireOmbre;
     case 'paladin':  return firePaladin;
+    case 'octagon':  return fireOracle;
     default:         return fireAssassin;
   }
 }

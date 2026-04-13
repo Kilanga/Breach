@@ -3,6 +3,96 @@
  * Dérivé de RIFT — adapté pour le mode auto-battle temps réel (Vampire Survivors)
  */
 
+// ─── Localisation (i18n) ────────────────────────────────────────────────────
+export const LANGUAGES = ['fr', 'en'];
+export const DEFAULT_LANGUAGE = 'fr';
+export const I18N = {
+  fr: {
+    play: 'JOUER',
+    talents: 'Talents',
+    achievements: 'Succès',
+    settings: 'Paramètres',
+    runs: 'Runs',
+    kills: 'Kills',
+    best: 'Meilleur',
+    version: 'Version',
+    menu_title: 'BREACH',
+    menu_sub: 'Auto-battle · Survie · Améliore',
+    menu_btn_play: '🎮  JOUER',
+    menu_btn_talents: '🏆  Talents',
+    menu_btn_achievements: '🥇  Succès',
+    menu_btn_settings: '⚙   Paramètres',
+    menu_stat_runs: 'Runs',
+    menu_stat_kills: 'Kills',
+    menu_stat_best: 'Meilleur',
+    menu_version: 'v{version} · Kilanga',
+  },
+  en: {
+    play: 'PLAY',
+    talents: 'Talents',
+    achievements: 'Achievements',
+    settings: 'Settings',
+    runs: 'Runs',
+    kills: 'Kills',
+    best: 'Best',
+    version: 'Version',
+    menu_title: 'BREACH',
+    menu_sub: 'Auto-battle · Survive · Upgrade',
+    menu_btn_play: '🎮  PLAY',
+    menu_btn_talents: '🏆  Talents',
+    menu_btn_achievements: '🥇  Achievements',
+    menu_btn_settings: '⚙   Settings',
+    menu_stat_runs: 'Runs',
+    menu_stat_kills: 'Kills',
+    menu_stat_best: 'Best',
+    menu_version: 'v{version} · Kilanga',
+  },
+};
+
+// ─── Cosmétiques & Boutique ────────────────────────────────────────────────
+export const COSMETICS = [
+  {
+    id: 'player_gold',
+    name: 'Apparence Or',
+    type: 'player_skin',
+    desc: 'Change la couleur du joueur en or.',
+    price: 100,
+    icon: '⭐',
+  },
+  {
+    id: 'arena_night',
+    name: 'Arène Nuit',
+    type: 'arena_skin',
+    desc: "Thème sombre pour l'arène.",
+    price: 80,
+    icon: '🌙',
+  },
+  {
+    id: 'trail_rainbow',
+    name: 'Trainée Arc-en-ciel',
+    type: 'trail',
+    desc: 'Laisse une traînée arc-en-ciel derrière le joueur.',
+    price: 120,
+    icon: '🌈',
+  },
+];
+
+// ─── Events hebdo ──────────────────────────────────────────────────────────
+export const WEEKLY_EVENTS = [
+  {
+    id: 'double_xp',
+    name: 'Double XP',
+    desc: 'Tous les XP gagnés sont doublés cette semaine.',
+    effect: { type: 'xp_mult', value: 2 },
+  },
+  {
+    id: 'fast_enemies',
+    name: 'Ennemis rapides',
+    desc: 'Les ennemis se déplacent 30% plus vite cette semaine.',
+    effect: { type: 'enemy_speed', value: 1.3 },
+  },
+];
+
 // ─── Arène ────────────────────────────────────────────────────────────────────
 export const ARENA_WIDTH  = 800;   // largeur logique de l'arène (pixels)
 export const ARENA_HEIGHT = 800;   // hauteur logique de l'arène
@@ -41,6 +131,7 @@ export const PLAYER_SHAPES = {
   HEXAGON:  'hexagon',  // Colosse   — zone au contact
   SHADOW:   'shadow',   // Ombre     — embuscade (premier projectile ×2)
   PALADIN:  'paladin',  // Paladin   — aura + frappe radiale
+  OCTAGON:  'octagon',  // Oracle    — onde de prémonition
 };
 
 export const CLASS_INFO = {
@@ -98,6 +189,19 @@ export const CLASS_INFO = {
     purchasable: true,
     purchaseCost: 30,
   },
+  octagon: {
+    name: 'Oracle',    short: 'ORC', color: '#00FFD0',
+    baseStats: { maxHp: 85, attack: 8, defense: 4, speed: 2.7 },
+    attackType: 'premonition',   // onde de prémonition
+    attackCooldown: 2.5,
+    premonitionRadius: 90,
+    slowAmount: 0.5,             // ralentit de 50% les ennemis touchés
+    slowDuration: 2.5,
+    desc: 'Déclenche une onde qui ralentit les ennemis proches. Prévoit les attaques adverses.',
+    locked: true,
+    purchasable: true,
+    purchaseCost: 40,
+  },
 };
 
 // ─── Ennemis ──────────────────────────────────────────────────────────────────
@@ -113,6 +217,7 @@ export const ENEMY_TYPES = {
   BOSS_MIRROR:   'boss_mirror',
   BOSS_PULSE:    'boss_pulse',
   BOSS_RIFT:     'boss_rift',
+  BOSS_PROPHET:  'boss_prophet',
 };
 
 export const ENEMY_INFO = {
@@ -186,6 +291,17 @@ export const ENEMY_INFO = {
     xpValue: 200, scoreValue: 500,
     behavior: 'boss_rift', isBoss: true, isFinal: true,
   },
+  boss_prophet: {
+    name: 'Le Prophète', short: 'PRP', color: '#00FFD0',
+    baseHp: 1200, baseDamage: 22, baseSpeed: 1.5, radius: 36,
+    xpValue: 150, scoreValue: 400,
+    behavior: 'boss_prophet', isBoss: true,
+    special: {
+      telegraphZones: true,  // zones d'anticipation
+      slowProjectiles: true, // projectiles télégraphiés
+    },
+    desc: 'Anticipe vos mouvements et crée des zones de danger. Projette des orbes qui ralentissent.',
+  },
 };
 
 // ─── Couleurs d'upgrades (synergies) ─────────────────────────────────────────
@@ -225,6 +341,7 @@ export const PALETTE = {
   hexagon:      '#66AAFF',
   shadow:       '#FF6600',
   paladin:      '#FFCC00',
+  octagon:      '#00FFD0',
 
   chaser:       '#FF4444',
   shooter:      '#4488FF',
@@ -244,8 +361,45 @@ export const PALETTE = {
   fragment:     '#FF8844',
 };
 
+// Palette daltonisme (contraste élevé)
+export const PALETTE_DALTONISM = {
+  ...PALETTE,
+  textPrimary:  '#FFFFFF',
+  textMuted:    '#B0B0B0',
+  textDim:      '#888888',
+  bg:           '#000000',
+  bgCard:       '#181818',
+  border:       '#FFFFFF',
+  borderLight:  '#B0B0B0',
+  triangle:     '#FFD700', // jaune vif
+  circle:       '#00BFFF', // bleu vif
+  hexagon:      '#00FF00', // vert vif
+  shadow:       '#FF00FF', // magenta vif
+  paladin:      '#FF4500', // orange vif
+  chaser:       '#FF0000',
+  shooter:      '#1E90FF',
+  blocker:      '#A9A9A9',
+  boss:         '#FFFF00',
+  healer:       '#00FF00',
+  explosive:    '#FFA500',
+  summoner:     '#9400D3',
+  upgradeRed:   '#FF0000',
+  upgradeBlue:  '#0000FF',
+  upgradeGreen: '#00FF00',
+  upgradeCurse: '#FFD700',
+  hp:           '#00FF00',
+  xp:           '#FFD700',
+  fragment:     '#FF00FF',
+};
+
 // ─── Méta-progression : upgrades permanents ───────────────────────────────────
 export const PERMANENT_UPGRADES_CATALOG = [
+  {
+    id: 'premonition', name: 'Prémonition', icon: '🔮',
+    desc: 'À chaque level-up, ralentit tous les ennemis pendant 2s.',
+    effect: { type: 'slowOnLevelUp', amount: 0.5, duration: 2 },
+    unlockCondition: { type: 'runs', value: 8, desc: '8 runs joués' }, hidden: false,
+  },
   {
     id: 'perm_hp1', name: '+5 PV max', icon: '❤',
     desc: 'Commence chaque run avec 5 PV supplémentaires.',
