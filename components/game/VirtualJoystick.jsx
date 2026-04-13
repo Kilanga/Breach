@@ -34,7 +34,6 @@ export default function VirtualJoystick({ onDirectionChange, style }) {
           dy = (dy / len) * STICK_RADIUS;
         }
         stickPos.current = { x: dx, y: dy };
-        const norm = len > 1 ? Math.min(len, STICK_RADIUS) / STICK_RADIUS : 0;
         onDirectionChange({ dx: (dx / STICK_RADIUS), dy: (dy / STICK_RADIUS) });
       },
 

@@ -7,6 +7,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Dimensions } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 import useGameStore from '../store/gameStore';
 import { PALETTE } from '../constants';
+import pkg from '../package.json';
 
 const { width: W } = Dimensions.get('window');
 
@@ -44,7 +45,7 @@ export default function MenuScreen() {
         <Button label="⚙   Paramètres" onPress={goToSettings} />
       </View>
 
-      <Text style={styles.version}>v1.0 · Kilanga</Text>
+      <Text style={styles.version}>v{pkg.version} · Kilanga</Text>
     </SafeAreaView>
   );
 }
