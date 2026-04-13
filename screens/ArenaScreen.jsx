@@ -271,6 +271,8 @@ function extractUiState(s) {
       enemyProjectiles:  s.enemyProjectiles,
       xpOrbs:            s.xpOrbs,
       particles:         s.particles,
+      activeUpgrades:    s.activeUpgrades,    // pour les auras visuelles
+      chainBoostActive:  s.attackBoostTimer > 0, // chain_reaction boost en cours
     },
   };
 }

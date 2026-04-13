@@ -665,7 +665,7 @@ function updatePlayerProjectiles(s, dt) {
         radius: 3 + Math.random() * 2,
       });
     }
-    // Explosif : dégâts de zone
+    // Explosif : dégâts de zone + anneau visuel
     if (dead.behavior === 'explosive' || ENEMY_INFO[dead.type]?.explodeOnDeath) {
       const explodeR = ENEMY_INFO[dead.type]?.explodeRadius || EXPLOSION_RADIUS;
       newEnemies = newEnemies.map(e => {
@@ -682,8 +682,15 @@ function updatePlayerProjectiles(s, dt) {
       if (Math.sqrt(pdx*pdx + pdy*pdy) < explodeR) {
         s = damagePlayer(s, dead.damage, false);
       }
+      // Anneau d'explosion visuel
+      newParticles.push({
+        id: makeId(), x: dead.x, y: dead.y,
+        type: 'ring', maxRadius: explodeR,
+        life: 0.35, maxLife: 0.35, color: '#FF8800',
+        vx: 0, vy: 0, radius: 0,
+      });
     }
-    // Fracture upgrade
+    // Fracture upgrade + anneau visuel
     if (hasUpgrade(s.activeUpgrades, 'fracture')) {
       const fracDmg = dead.maxHp * 0.3;
       newEnemies = newEnemies.map(e => {
@@ -694,6 +701,12 @@ function updatePlayerProjectiles(s, dt) {
         }
         return e;
       });
+      newParticles.push({
+        id: makeId(), x: dead.x, y: dead.y,
+        type: 'ring', maxRadius: FRACTURE_RADIUS,
+        life: 0.4, maxLife: 0.4, color: '#FF4455',
+        vx: 0, vy: 0, radius: 0,
+      });
     }
     // Vol de vie
     const leechCount = s.activeUpgrades.filter(u => u.id === 'leech').length;
@@ -703,7 +716,7 @@ function updatePlayerProjectiles(s, dt) {
       s.attackBoostMult = 1.5;
       s.attackBoostTimer = 0.5;
     }
-    // Shockwave : stun ennemis proches
+    // Shockwave : stun ennemis proches + anneau visuel
     if (hasUpgrade(s.activeUpgrades, 'shockwave')) {
       newEnemies = newEnemies.map(e => {
         const dx = e.x - dead.x;
@@ -712,6 +725,12 @@ function updatePlayerProjectiles(s, dt) {
           return { ...e, stunTimer: 1 };
         }
         return e;
+      });
+      newParticles.push({
+        id: makeId(), x: dead.x, y: dead.y,
+        type: 'ring', maxRadius: SHOCKWAVE_RADIUS,
+        life: 0.5, maxLife: 0.5, color: '#FFFF44',
+        vx: 0, vy: 0, radius: 0,
       });
     }
   }
