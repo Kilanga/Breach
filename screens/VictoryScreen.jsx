@@ -25,6 +25,8 @@ export default function VictoryScreen() {
         {lastRun && (
           <View style={styles.stats}>
             <StatRow label="Temps de survie" value={formatTime(lastRun.survivalTime)} highlight />
+            <StatRow label="Score"           value={(lastRun.score || 0).toLocaleString()} />
+            <StatRow label="Niveau atteint"  value={`Niv. ${lastRun.level || 1}`} />
             <StatRow label="Ennemis tués"    value={lastRun.kills} />
             <StatRow label="Classe"          value={lastRun.shape} />
           </View>

@@ -4,12 +4,7 @@
  */
 
 import { CLASS_INFO } from '../constants';
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function makeId() {
-  return Math.random().toString(36).slice(2, 9) + Date.now().toString(36);
-}
+import { makeId } from '../utils/makeId';
 
 function vecToNearest(player, enemies) {
   if (enemies.length === 0) return null;
@@ -39,19 +34,20 @@ export function fireAssassin(player, enemies, upgrades) {
   const nx = dx / dist;
   const ny = dy / dist;
   const info = CLASS_INFO.triangle;
-  const speed = info.projectileSpeed;
-  const dmg = computeAttackDamage(player.attack, upgrades);
+  const { dmg, isCrit } = computeAttackDamage(player.attack, upgrades);
+  const vf = visualFlags(upgrades, isCrit);
   return [{
     id: makeId(),
     x: player.x, y: player.y,
-    vx: nx * speed, vy: ny * speed,
+    vx: nx * info.projectileSpeed, vy: ny * info.projectileSpeed,
     damage: dmg,
-    radius: info.projectileRadius,
+    radius: isCrit ? info.projectileRadius * 1.6 : info.projectileRadius,
     piercing: true,
-    piercedIds: new Set(),
+    piercedIds: [],
     color: CLASS_INFO.triangle.color,
     owner: 'player',
     lifeMs: 2500,
+    ...vf,
   }];
 }
 
@@ -60,7 +56,8 @@ export function fireAssassin(player, enemies, upgrades) {
  */
 export function fireArcaniste(player, enemies, upgrades) {
   const info = CLASS_INFO.circle;
-  const dmg = computeAttackDamage(player.attack, upgrades);
+  const { dmg, isCrit } = computeAttackDamage(player.attack, upgrades);
+  const vf = visualFlags(upgrades, isCrit);
   // Explose sur tous les ennemis dans aoeRadius
   return [{
     id: makeId(),
@@ -72,6 +69,7 @@ export function fireArcaniste(player, enemies, upgrades) {
     color: CLASS_INFO.circle.color,
     owner: 'player',
     lifeMs: 300, // flash visuel court
+    ...vf,
   }];
 }
 
@@ -80,17 +78,19 @@ export function fireArcaniste(player, enemies, upgrades) {
  */
 export function fireColosse(player, enemies, upgrades) {
   const info = CLASS_INFO.hexagon;
-  const dmg = computeAttackDamage(player.attack, upgrades) * 0.5; // dps réduit compensé par fréquence
+  const { dmg, isCrit } = computeAttackDamage(player.attack, upgrades);
+  const vf = { ...visualFlags(upgrades, isCrit), visualType: isCrit ? 'crit' : 'aura' };
   return [{
     id: makeId(),
     x: player.x, y: player.y,
     vx: 0, vy: 0,
-    damage: dmg,
+    damage: dmg * 0.5, // dps réduit compensé par fréquence
     radius: info.auraRadius,
     aoe: true,
     color: CLASS_INFO.hexagon.color,
     owner: 'player',
     lifeMs: 200,
+    ...vf,
   }];
 }
 
@@ -104,21 +104,21 @@ export function fireOmbre(player, enemies, upgrades, ambushReady) {
   const nx = dx / dist;
   const ny = dy / dist;
   const info = CLASS_INFO.shadow;
-  const speed = info.projectileSpeed;
-  let dmg = computeAttackDamage(player.attack, upgrades);
-  if (ambushReady) dmg *= info.ambushMultiplier;
+  const { dmg: baseDmg, isCrit } = computeAttackDamage(player.attack, upgrades);
+  const dmg = ambushReady ? Math.round(baseDmg * info.ambushMultiplier) : baseDmg;
+  const vf  = visualFlags(upgrades, isCrit, ambushReady);
   return [{
     id: makeId(),
     x: player.x, y: player.y,
-    vx: nx * speed, vy: ny * speed,
+    vx: nx * info.projectileSpeed, vy: ny * info.projectileSpeed,
     damage: dmg,
-    radius: info.projectileRadius,
+    radius: ambushReady ? info.projectileRadius * 1.8 : info.projectileRadius,
     piercing: false,
-    piercedIds: new Set(),
+    piercedIds: [],
     color: CLASS_INFO.shadow.color,
     owner: 'player',
     lifeMs: 2000,
-    isAmbush: ambushReady,
+    ...vf,
   }];
 }
 
@@ -127,7 +127,8 @@ export function fireOmbre(player, enemies, upgrades, ambushReady) {
  */
 export function firePaladin(player, enemies, upgrades) {
   const info = CLASS_INFO.paladin;
-  const dmg = computeAttackDamage(player.attack, upgrades);
+  const { dmg, isCrit } = computeAttackDamage(player.attack, upgrades);
+  const vf = { ...visualFlags(upgrades, isCrit), visualType: isCrit ? 'crit' : 'radiant' };
   const projectiles = [];
   for (let i = 0; i < info.radialCount; i++) {
     const angle = (i / info.radialCount) * Math.PI * 2;
@@ -137,12 +138,13 @@ export function firePaladin(player, enemies, upgrades) {
       vx: Math.cos(angle) * info.projectileSpeed,
       vy: Math.sin(angle) * info.projectileSpeed,
       damage: dmg,
-      radius: info.projectileRadius,
+      radius: isCrit ? info.projectileRadius * 1.4 : info.projectileRadius,
       piercing: false,
-      piercedIds: new Set(),
+      piercedIds: [],
       color: CLASS_INFO.paladin.color,
       owner: 'player',
       lifeMs: 1500,
+      ...vf,
     });
   }
   return projectiles;
@@ -150,16 +152,34 @@ export function firePaladin(player, enemies, upgrades) {
 
 // ─── Utilitaires ──────────────────────────────────────────────────────────────
 
+/**
+ * Calcule les dégâts et si l'attaque est critique.
+ * @returns {{ dmg: number, isCrit: boolean }}
+ */
 function computeAttackDamage(baseAttack, upgrades) {
-  let dmg = baseAttack;
-  // Critique
+  let dmg    = baseAttack;
+  let isCrit = false;
   const critUpgrades = upgrades.filter(u => u.id === 'critique');
   if (critUpgrades.length > 0) {
     const critChance = critUpgrades.length * 0.15;
-    if (Math.random() < critChance) dmg *= 3;
+    if (Math.random() < critChance) {
+      dmg   *= 3;
+      isCrit = true;
+    }
   }
-  // Berserker (géré côté loop avec accès au HP)
-  return Math.round(dmg);
+  return { dmg: Math.round(dmg), isCrit };
+}
+
+/** Retourne les flags visuels courants basés sur les upgrades actifs */
+function visualFlags(upgrades, isCrit, isAmbush = false) {
+  const hasBurn   = upgrades.some(u => u.id === 'ignition');
+  const hasFreeze = upgrades.some(u => u.id === 'gelbomb');
+  const visualType = isAmbush ? 'ambush'
+                   : isCrit   ? 'crit'
+                   : hasBurn  ? 'burn'
+                   : hasFreeze ? 'freeze'
+                   : 'normal';
+  return { hasBurn, hasFreeze, isCrit, isAmbush, visualType };
 }
 
 /**

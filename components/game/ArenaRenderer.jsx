@@ -1,20 +1,44 @@
 /**
  * BREACH — Renderer de l'arène (SVG)
  * Dessine : joueur, ennemis, projectiles, orbes XP, particules
+ * Les projectiles ont un rendu différencié selon leur visualType (burn, freeze, crit, ambush, radiant, aura)
+ * Les particules de type 'ring' sont dessinées comme des anneaux d'expansion (fracture, shockwave, explosif)
  */
 
 import React, { memo } from 'react';
-import Svg, { Circle, Polygon, Rect, G, Line, Ellipse, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, Polygon, Rect, G, Line } from 'react-native-svg';
 import { PALETTE, CLASS_INFO, PLAYER_RADIUS } from '../../constants';
 
 const ArenaRenderer = memo(({ gameState, arenaWidth, arenaHeight, scaleX, scaleY }) => {
   if (!gameState) return null;
-  const { player, enemies, playerProjectiles, enemyProjectiles, xpOrbs, particles } = gameState;
+  const { player, enemies, playerProjectiles, enemyProjectiles,
+          xpOrbs, particles, activeUpgrades = [], chainBoostActive = false } = gameState;
 
   const sx = scaleX || 1;
   const sy = scaleY || 1;
   const vw = arenaWidth  * sx;
   const vh = arenaHeight * sy;
+
+  // Flags visuels dérivés des upgrades actifs
+  const hasMagnet     = activeUpgrades.some(u => u.id === 'magnet');
+  const hasCyclone    = activeUpgrades.some(u => u.id === 'cyclone');
+  const hasRegen      = activeUpgrades.some(u => u.id === 'regen');
+  const hasBerserker  = activeUpgrades.some(u => u.id === 'berserker');
+  const berserkerActive = hasBerserker && player.hp / player.maxHp < 0.3;
+
+  // Rayon de collecte XP (avec magnet)
+  const magnetStacks = activeUpgrades.filter(u => u.id === 'magnet').length;
+  const xpRadius = (player.xpPickupRadius || 50) * (1 + magnetStacks * 0.5);
+
+  // AoE de base pour les classes à zone
+  const classInfo = CLASS_INFO[player.shape] || {};
+  const showZoneRing = classInfo.aoeRadius || classInfo.auraRadius;
+  const zoneRadius   = (classInfo.aoeRadius || classInfo.auraRadius || 0)
+                       + (hasCyclone ? 20 : 0);  // cyclone agrandit la zone
+
+  // Séparer les ring particles des particules normales
+  const ringParticles   = particles.filter(p => p.type === 'ring');
+  const normalParticles = particles.filter(p => !p.type);
 
   return (
     <Svg width={vw} height={vh} viewBox={`0 0 ${arenaWidth} ${arenaHeight}`}>
@@ -23,44 +47,148 @@ const ArenaRenderer = memo(({ gameState, arenaWidth, arenaHeight, scaleX, scaleY
       {/* Grille décorative */}
       <GridLines w={arenaWidth} h={arenaHeight} />
 
-      {/* XP orbs */}
+      {/* ─── Auras joueur (couche basse) ───────────────────────────────────── */}
+      {/* Rayon d'attraction XP (aimant) */}
+      {hasMagnet && (
+        <Circle
+          cx={player.x} cy={player.y} r={xpRadius}
+          fill="none" stroke={PALETTE.xp || '#FFDD44'} strokeWidth={1}
+          strokeDasharray="4,6" opacity={0.20}
+        />
+      )}
+      {/* Zone d'attaque de base (Arcaniste / Colosse) + bonus Cyclone */}
+      {showZoneRing > 0 && (
+        <Circle
+          cx={player.x} cy={player.y} r={zoneRadius}
+          fill="none" stroke={classInfo.color} strokeWidth={1}
+          strokeDasharray={hasCyclone ? '6,3' : '3,5'} opacity={hasCyclone ? 0.35 : 0.20}
+        />
+      )}
+      {/* Berserker actif : aura rouge pulsante */}
+      {berserkerActive && (
+        <>
+          <Circle cx={player.x} cy={player.y} r={PLAYER_RADIUS + 10}
+            fill="none" stroke="#FF2222" strokeWidth={3} opacity={0.60} />
+          <Circle cx={player.x} cy={player.y} r={PLAYER_RADIUS + 18}
+            fill="none" stroke="#FF2222" strokeWidth={1} opacity={0.25} />
+        </>
+      )}
+      {/* Chain reaction boost actif : halo doré */}
+      {chainBoostActive && (
+        <Circle cx={player.x} cy={player.y} r={PLAYER_RADIUS + 8}
+          fill="none" stroke="#FFCC00" strokeWidth={2} opacity={0.75} />
+      )}
+      {/* Regen : légère aura verte */}
+      {hasRegen && (
+        <Circle cx={player.x} cy={player.y} r={PLAYER_RADIUS + 4}
+          fill="#44FF88" opacity={0.07} />
+      )}
+
+      {/* ─── XP orbs ────────────────────────────────────────────────────── */}
       {xpOrbs.map(orb => (
-        <Circle key={orb.id} cx={orb.x} cy={orb.y} r={orb.radius} fill={PALETTE.xp} opacity={0.9} />
+        <Circle key={orb.id} cx={orb.x} cy={orb.y} r={orb.radius} fill={PALETTE.xp || '#FFDD44'} opacity={0.9} />
       ))}
 
-      {/* Particules */}
-      {particles.map(p => (
+      {/* ─── Ring particles (fracture, shockwave, explosif) ─────────────── */}
+      {ringParticles.map(p => {
+        const progress = 1 - p.life / p.maxLife; // 0→1 pendant l'expansion
+        const r = (p.maxRadius || 60) * progress;
+        const opacity = Math.max(0, p.life / p.maxLife);
+        return (
+          <Circle key={p.id} cx={p.x} cy={p.y} r={r}
+            fill="none" stroke={p.color} strokeWidth={2 + (1 - progress) * 3}
+            opacity={opacity} />
+        );
+      })}
+
+      {/* ─── Particules normales ────────────────────────────────────────── */}
+      {normalParticles.map(p => (
         <Circle
-          key={p.id}
-          cx={p.x} cy={p.y}
+          key={p.id} cx={p.x} cy={p.y}
           r={p.radius * (p.life / p.maxLife)}
-          fill={p.color}
-          opacity={p.life / p.maxLife}
+          fill={p.color} opacity={p.life / p.maxLife}
         />
       ))}
 
-      {/* Projectiles ennemis */}
+      {/* ─── Projectiles ennemis ────────────────────────────────────────── */}
       {enemyProjectiles.map(p => (
         <Circle key={p.id} cx={p.x} cy={p.y} r={p.radius} fill={p.color} opacity={0.85} />
       ))}
 
-      {/* Projectiles joueur */}
-      {playerProjectiles.map(p => (
-        p.aoe ? (
-          <Circle key={p.id} cx={p.x} cy={p.y} r={p.radius} fill={p.color} opacity={0.25} />
-        ) : (
-          <Circle key={p.id} cx={p.x} cy={p.y} r={p.radius} fill={p.color} opacity={0.95} />
-        )
-      ))}
+      {/* ─── Projectiles joueur ─────────────────────────────────────────── */}
+      {playerProjectiles.map(p => <PlayerProjectile key={p.id} proj={p} />)}
 
-      {/* Ennemis */}
+      {/* ─── Ennemis ────────────────────────────────────────────────────── */}
       {enemies.map(e => <EnemyShape key={e.id} enemy={e} />)}
 
-      {/* Joueur */}
+      {/* ─── Joueur ─────────────────────────────────────────────────────── */}
       <PlayerShape player={player} />
     </Svg>
   );
 });
+
+// ─── Rendu projectile joueur ─────────────────────────────────────────────────
+
+function PlayerProjectile({ proj }) {
+  const { x, y, radius, color, aoe, visualType = 'normal', isCrit, hasBurn, hasFreeze } = proj;
+
+  if (aoe) {
+    // Flash AoE (Arcaniste / Colosse)
+    const overlayColor = hasBurn ? '#FF6600' : hasFreeze ? '#44CCFF' : isCrit ? '#FFCC00' : color;
+    return (
+      <G>
+        <Circle cx={x} cy={y} r={radius} fill={overlayColor} opacity={visualType === 'aura' ? 0.15 : 0.22} />
+        {(hasBurn || hasFreeze || isCrit) && (
+          <Circle cx={x} cy={y} r={radius} fill="none" stroke={overlayColor} strokeWidth={1.5} opacity={0.45} />
+        )}
+      </G>
+    );
+  }
+
+  // Projectile linéaire
+  switch (visualType) {
+    case 'crit':
+      return (
+        <G>
+          <Circle cx={x} cy={y} r={radius + 4} fill="#FFCC00" opacity={0.30} />
+          <Circle cx={x} cy={y} r={radius}     fill="#FFEE44" opacity={0.95} />
+        </G>
+      );
+    case 'burn':
+      return (
+        <G>
+          <Circle cx={x} cy={y} r={radius + 3} fill="#FF4400" opacity={0.35} />
+          <Circle cx={x} cy={y} r={radius}     fill={color}   opacity={0.95} />
+        </G>
+      );
+    case 'freeze':
+      return (
+        <G>
+          <Circle cx={x} cy={y} r={radius + 2} fill="#44CCFF" opacity={0.40} />
+          <Circle cx={x} cy={y} r={radius}     fill="#88DDFF" opacity={0.95} />
+        </G>
+      );
+    case 'ambush':
+      return (
+        <G>
+          <Circle cx={x} cy={y} r={radius + 5} fill="#FF4400" opacity={0.45} />
+          <Circle cx={x} cy={y} r={radius}     fill={color}   opacity={1.0}  />
+          {/* Couronne indiquant le ×2 */}
+          <Circle cx={x} cy={y} r={radius + 2} fill="none"    stroke="#FFFFFF" strokeWidth={1} opacity={0.6} />
+        </G>
+      );
+    case 'radiant':
+      // Paladin : éclat lumineux doré
+      return (
+        <G>
+          <Circle cx={x} cy={y} r={radius + 3} fill={color} opacity={0.20} />
+          <Circle cx={x} cy={y} r={radius}     fill={color} opacity={0.95} />
+        </G>
+      );
+    default:
+      return <Circle cx={x} cy={y} r={radius} fill={color} opacity={0.95} />;
+  }
+}
 
 // ─── Joueur ───────────────────────────────────────────────────────────────────
 
@@ -129,7 +257,6 @@ function EnemyShape({ enemy }) {
   const hpPct = Math.max(0, hp / maxHp);
 
   // Couleur modifiée si statut
-  let displayColor = color;
   let overlayColor = null;
   if (freezeTimer > 0) overlayColor = '#44CCFF';
   if (burnTimer   > 0) overlayColor = '#FF6600';
@@ -137,7 +264,7 @@ function EnemyShape({ enemy }) {
 
   return (
     <G>
-      <Circle cx={x} cy={y} r={radius} fill={displayColor} opacity={0.9} />
+      <Circle cx={x} cy={y} r={radius} fill={color} opacity={0.9} />
       {overlayColor && <Circle cx={x} cy={y} r={radius} fill={overlayColor} opacity={0.35} />}
       {/* HP bar */}
       <Rect x={x - radius} y={y - radius - 8} width={radius * 2} height={3} rx={1.5} fill="rgba(255,255,255,0.15)" />

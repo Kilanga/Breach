@@ -33,7 +33,7 @@ export default function TalentTreeScreen() {
         <Text style={styles.fragLabel}>Fragments du Rift</Text>
         <Text style={styles.fragValue}>{meta.talentPoints || 0}</Text>
       </View>
-      <Text style={styles.fragHint}>Les fragments sont gagnés automatiquement en fin de run (10/min + 1/kill).</Text>
+      <Text style={styles.fragHint}>Les fragments sont gagnés automatiquement en fin de run (1 toutes les 10s + 1/kill, divisé par 5 pour les points de talent).</Text>
 
       <ScrollView contentContainerStyle={styles.list}>
         {PERMANENT_UPGRADES_CATALOG.map(item => {

@@ -9,6 +9,7 @@ import { CLASS_INFO } from '../../constants';
 export const INITIAL_META = {
   permanentUpgrades:  [],
   bestSurvivalTime:   0,      // secondes
+  bestScore:          0,      // meilleur score toutes runs
   totalRuns:          0,
   totalKills:         0,
   totalWins:          0,      // runs de 5min+ complétés
@@ -36,7 +37,7 @@ export function createMetaSlice(set, get) {
   return {
 
     // ── Fin de run ──────────────────────────────────────────────────────────
-    endRun: ({ shape, survivalTime, kills, won, activeUpgrades }) => {
+    endRun: ({ shape, survivalTime, kills, won, score, level, activeUpgrades }) => {
       const meta = get().meta;
       const isWin = won || survivalTime >= 300; // 5 minutes = victoire
 
@@ -52,13 +53,14 @@ export function createMetaSlice(set, get) {
       // Mise à jour globale
       const newMeta = {
         ...meta,
-        totalRuns:  meta.totalRuns  + 1,
-        totalKills: meta.totalKills + kills,
-        totalWins:  isWin ? meta.totalWins + 1 : meta.totalWins,
+        totalRuns:        meta.totalRuns  + 1,
+        totalKills:       meta.totalKills + kills,
+        totalWins:        isWin ? meta.totalWins + 1 : meta.totalWins,
         bestSurvivalTime: Math.max(meta.bestSurvivalTime, survivalTime),
+        bestScore:        Math.max(meta.bestScore || 0, score || 0),
         shapeStats,
         runHistory: [
-          { shape, survivalTime, kills, won: isWin, date: Date.now() },
+          { shape, survivalTime, kills, won: isWin, score: score || 0, level: level || 1, date: Date.now() },
           ...(meta.runHistory || []),
         ].slice(0, 10),
       };
@@ -79,7 +81,15 @@ export function createMetaSlice(set, get) {
     purchaseClass: (shape) => {
       const meta = get().meta;
       if (meta.purchasedClasses.includes(shape)) return false;
-      set({ meta: { ...meta, purchasedClasses: [...meta.purchasedClasses, shape] } });
+      const cost = CLASS_INFO[shape]?.purchaseCost || 0;
+      if ((meta.talentPoints || 0) < cost) return false;
+      set({
+        meta: {
+          ...meta,
+          purchasedClasses: [...meta.purchasedClasses, shape],
+          talentPoints: (meta.talentPoints || 0) - cost,
+        },
+      });
       return true;
     },
 

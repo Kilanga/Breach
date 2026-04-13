@@ -3,7 +3,7 @@
  * Config JSON par minute + scaling de difficulté
  */
 
-import { ENEMY_TYPES } from '../constants';
+import { ENEMY_TYPES, VICTORY_TIME } from '../constants';
 
 // ─── Config des vagues par intervalle de temps (secondes) ─────────────────────
 // Chaque entrée = spawns déclenchés entre [fromSec, toSec]
@@ -114,14 +114,18 @@ export function getActiveWaveConfig(elapsedSeconds) {
 }
 
 /**
- * Scaling de difficulté : HP, dégâts, vitesse des ennemis augmentent avec le temps
+ * Scaling de difficulté : HP, dégâts, vitesse augmentent avec le temps.
+ * En mode Endless, un bonus de +25% par minute s'applique après le compte à rebours.
  */
 export function getEnemyScaling(elapsedSeconds) {
   const minute = elapsedSeconds / 60;
+  // Endless bonus : +25% par minute après VICTORY_TIME (5 min)
+  const endlessMinutes = Math.max(0, (elapsedSeconds - VICTORY_TIME) / 60);
+  const endlessBonus   = endlessMinutes * 0.25;
   return {
-    hpMult:     1 + minute * 0.35,
-    damageMult: 1 + minute * 0.2,
-    speedMult:  1 + Math.min(minute * 0.1, 0.8), // cap à +80%
+    hpMult:     1 + minute * 0.35 + endlessBonus,
+    damageMult: 1 + minute * 0.2  + endlessBonus,
+    speedMult:  1 + Math.min(minute * 0.1 + endlessBonus * 0.4, 1.5), // cap +150%
   };
 }
 

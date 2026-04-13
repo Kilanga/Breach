@@ -1,11 +1,11 @@
 /**
  * BREACH — HUD (Heads-Up Display)
- * Affiche HP, XP, niveau, timer de survie, score, kills
+ * Affiche HP, XP, niveau, timer de survie, score, kills, indicateur d'embuscade
  */
 
 import React, { memo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { PALETTE, CLASS_INFO } from '../../constants';
+import { PALETTE, CLASS_INFO, GAME_MODE, VICTORY_TIME } from '../../constants';
 import { xpForLevel } from '../../systems/gameLoop';
 
 function formatTime(seconds) {
@@ -14,12 +14,24 @@ function formatTime(seconds) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-const HUD = memo(({ player, level, xp, elapsedTime, kills, score, bossActive }) => {
+// Calcule le bonus endless (idem waveSystem.getEnemyScaling) sans import circulaire
+function endlessBonusMult(elapsedTime) {
+  return Math.max(0, (elapsedTime - VICTORY_TIME) / 60) * 0.25;
+}
+
+const HUD = memo(({ player, level, xp, elapsedTime, kills, score, bossActive,
+                    ambushReady, ambushTimer, gameMode }) => {
   const hpPct  = Math.max(0, Math.min(1, player.hp / player.maxHp));
   const xpNeeded = xpForLevel(level);
   const xpPct  = Math.min(1, xp / xpNeeded);
   const classInfo = CLASS_INFO[player.shape] || {};
   const classColor = classInfo.color || PALETTE.textPrimary;
+  const isEndless = gameMode === GAME_MODE.ENDLESS;
+  const ambushCooldown = classInfo.ambushCooldown || 4;
+  const ambushPct = ambushReady ? 1 : Math.min(1, (ambushTimer || 0) / ambushCooldown);
+  // Multiplicateur de difficulté en mode Endless après le timer
+  const endlessBonus = isEndless ? endlessBonusMult(elapsedTime) : 0;
+  const endlessMultStr = endlessBonus > 0 ? `×${(1 + endlessBonus).toFixed(2)}` : null;
 
   return (
     <View style={styles.container} pointerEvents="none">
@@ -28,6 +40,7 @@ const HUD = memo(({ player, level, xp, elapsedTime, kills, score, bossActive }) 
         <View style={styles.timerBox}>
           <Text style={styles.timerLabel}>⏱</Text>
           <Text style={styles.timer}>{formatTime(elapsedTime)}</Text>
+          {isEndless && <Text style={styles.endlessTag}>∞</Text>}
         </View>
         <View style={styles.scoreBox}>
           <Text style={styles.scoreLabel}>SCORE</Text>
@@ -38,6 +51,13 @@ const HUD = memo(({ player, level, xp, elapsedTime, kills, score, bossActive }) 
           <Text style={styles.kills}>{kills}</Text>
         </View>
       </View>
+
+      {/* Endless : indicateur du multiplicateur de difficulté */}
+      {endlessMultStr && (
+        <View style={styles.endlessMultRow}>
+          <Text style={styles.endlessMultText}>☠ Difficulté {endlessMultStr}</Text>
+        </View>
+      )}
 
       {/* Boss indicator */}
       {bossActive && (
@@ -64,6 +84,17 @@ const HUD = memo(({ player, level, xp, elapsedTime, kills, score, bossActive }) 
         </View>
         <Text style={styles.xpText}>{xp}/{xpNeeded} XP</Text>
       </View>
+
+      {/* Indicateur d'embuscade — Shadow uniquement */}
+      {player.shape === 'shadow' && (
+        <View style={styles.ambushContainer}>
+          <Text style={styles.ambushLabel}>🗡 EMBUSCADE</Text>
+          <View style={styles.ambushBar}>
+            <View style={[styles.ambushFill, { width: `${ambushPct * 100}%`, backgroundColor: ambushReady ? '#FF6600' : '#884400' }]} />
+          </View>
+          {ambushReady && <Text style={styles.ambushReady}>×2</Text>}
+        </View>
+      )}
     </View>
   );
 });
@@ -138,6 +169,32 @@ const styles = StyleSheet.create({
     backgroundColor: PALETTE.xp,
   },
   xpText: { fontSize: 9, color: PALETTE.textMuted, minWidth: 55, textAlign: 'right' },
+
+  endlessTag: { fontSize: 12, color: '#BB44FF', fontWeight: 'bold', marginLeft: 4 },
+
+  endlessMultRow: {
+    alignSelf: 'center',
+    backgroundColor: 'rgba(187,68,255,0.15)',
+    borderRadius: 6, borderWidth: 1, borderColor: '#BB44FF55',
+    paddingHorizontal: 10, paddingVertical: 2,
+    marginBottom: 4,
+  },
+  endlessMultText: { fontSize: 11, color: '#CC88FF', fontWeight: 'bold', letterSpacing: 1 },
+
+  ambushContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
+  },
+  ambushLabel: { fontSize: 9, color: '#FF6600', fontWeight: 'bold', letterSpacing: 0.5 },
+  ambushBar: {
+    flex: 1, height: 5, borderRadius: 2.5,
+    backgroundColor: 'rgba(255,102,0,0.15)',
+    overflow: 'hidden',
+  },
+  ambushFill: { height: '100%', borderRadius: 2.5 },
+  ambushReady: { fontSize: 10, color: '#FF6600', fontWeight: 'bold', minWidth: 20, textAlign: 'right' },
 });
 
 export default HUD;
