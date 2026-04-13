@@ -319,7 +319,7 @@ function updateEnemies(s, dt) {
           break;
         }
         case 'summon': {
-          const result = summonerAI(enemy, player, dt);
+          const result = summonerAI(enemy, player, dt, s.elapsedTime);
           enemy = result.enemy;
           newSummons = newSummons.concat(result.summons);
           break;
@@ -457,16 +457,16 @@ function healerAI(enemy, player, allEnemies, dt) {
   return { enemy: { ...enemy, x: nx, y: ny, healTimer }, healEvents: [] };
 }
 
-function summonerAI(enemy, player, dt) {
+function summonerAI(enemy, player, dt, elapsedTime = 0) {
   const e = chasePlayer(enemy, player, dt);
   const summonTimer = (e.summonTimer || 0) + dt;
   const info = ENEMY_INFO.summoner;
   const summons = [];
   if (summonTimer >= info.summonInterval) {
+    const scaling = getEnemyScaling(elapsedTime); // invocations au niveau de difficulté actuel
     for (let i = 0; i < info.summonCount; i++) {
       const angle = Math.random() * Math.PI * 2;
       const r = 30 + Math.random() * 20;
-      const scaling = { hpMult: 1, damageMult: 1, speedMult: 1 };
       const summon = spawnEnemy(ENEMY_TYPES.CHASER, scaling);
       if (summon) {
         summon.x = e.x + Math.cos(angle) * r;
@@ -764,7 +764,9 @@ function updatePlayerProjectiles(s, dt) {
 // ─── Projectiles ennemis ──────────────────────────────────────────────────────
 
 function updateEnemyProjectiles(s, dt) {
-  let pendingDamage = null;
+  // Accumuler les dégâts de TOUS les projectiles qui touchent le joueur dans
+  // cette frame (et les détruire), puis appliquer une seule fois.
+  let accumulatedDamage = 0;
 
   const projs = s.enemyProjectiles
     .map(p => {
@@ -773,21 +775,19 @@ function updateEnemyProjectiles(s, dt) {
       proj.x += proj.vx * SPEED_SCALE * dt;
       proj.y += proj.vy * SPEED_SCALE * dt;
       if (proj.x < 0 || proj.x > ARENA_WIDTH || proj.y < 0 || proj.y > ARENA_HEIGHT) return null;
-      // Collision joueur (accumulate, apply once after map)
-      if (pendingDamage === null) {
-        const dx = s.player.x - proj.x;
-        const dy = s.player.y - proj.y;
-        if (Math.sqrt(dx*dx + dy*dy) < PLAYER_RADIUS + proj.radius) {
-          pendingDamage = proj.damage;
-          return null;
-        }
+      // Collision joueur — tous les projectiles qui touchent sont détruits
+      const dx = s.player.x - proj.x;
+      const dy = s.player.y - proj.y;
+      if (Math.sqrt(dx*dx + dy*dy) < PLAYER_RADIUS + proj.radius) {
+        accumulatedDamage += proj.damage;
+        return null;
       }
       return proj;
     })
     .filter(Boolean);
 
-  if (pendingDamage !== null) {
-    s = damagePlayer(s, pendingDamage, true);
+  if (accumulatedDamage > 0) {
+    s = damagePlayer(s, accumulatedDamage, true);
   }
 
   return { ...s, enemyProjectiles: projs };
@@ -826,18 +826,23 @@ function collectXP(s, dt) {
 
   if (xpGained === 0) return { ...s, xpOrbs: remaining };
 
-  const newXp = s.xp + xpGained;
-  const xpNeeded = xpForLevel(s.level);
-  if (newXp >= xpNeeded) {
-    return {
-      ...s,
-      xpOrbs: remaining,
-      xp: newXp - xpNeeded,
-      level: s.level + 1,
-      pendingUpgrade: true,
-    };
+  let newXp    = s.xp + xpGained;
+  let newLevel = s.level;
+  let pendingUpgrade = s.pendingUpgrade;
+
+  // Boucle : un seul upgrade est proposé à la fois, mais on consomme tout l'XP accumulé
+  while (!pendingUpgrade) {
+    const xpNeeded = xpForLevel(newLevel);
+    if (newXp >= xpNeeded) {
+      newXp -= xpNeeded;
+      newLevel += 1;
+      pendingUpgrade = true;
+    } else {
+      break;
+    }
   }
-  return { ...s, xpOrbs: remaining, xp: newXp };
+
+  return { ...s, xpOrbs: remaining, xp: newXp, level: newLevel, pendingUpgrade };
 }
 
 // ─── Dégâts ───────────────────────────────────────────────────────────────────

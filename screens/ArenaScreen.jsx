@@ -105,6 +105,8 @@ export default function ArenaScreen() {
         survivalTime: newState.elapsedTime,
         kills: newState.kills,
         won: false,
+        score: newState.score,
+        level: newState.level,
         activeUpgrades: newState.activeUpgrades,
       });
       goToGameOver();
@@ -118,6 +120,8 @@ export default function ArenaScreen() {
         survivalTime: newState.elapsedTime,
         kills: newState.kills,
         won: true,
+        score: newState.score,
+        level: newState.level,
         activeUpgrades: newState.activeUpgrades,
       });
       goToVictory();

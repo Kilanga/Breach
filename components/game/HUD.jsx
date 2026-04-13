@@ -5,13 +5,18 @@
 
 import React, { memo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { PALETTE, CLASS_INFO, GAME_MODE } from '../../constants';
+import { PALETTE, CLASS_INFO, GAME_MODE, VICTORY_TIME } from '../../constants';
 import { xpForLevel } from '../../systems/gameLoop';
 
 function formatTime(seconds) {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
   return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+// Calcule le bonus endless (idem waveSystem.getEnemyScaling) sans import circulaire
+function endlessBonusMult(elapsedTime) {
+  return Math.max(0, (elapsedTime - VICTORY_TIME) / 60) * 0.25;
 }
 
 const HUD = memo(({ player, level, xp, elapsedTime, kills, score, bossActive,
@@ -24,6 +29,9 @@ const HUD = memo(({ player, level, xp, elapsedTime, kills, score, bossActive,
   const isEndless = gameMode === GAME_MODE.ENDLESS;
   const ambushCooldown = classInfo.ambushCooldown || 4;
   const ambushPct = ambushReady ? 1 : Math.min(1, (ambushTimer || 0) / ambushCooldown);
+  // Multiplicateur de difficulté en mode Endless après le timer
+  const endlessBonus = isEndless ? endlessBonusMult(elapsedTime) : 0;
+  const endlessMultStr = endlessBonus > 0 ? `×${(1 + endlessBonus).toFixed(2)}` : null;
 
   return (
     <View style={styles.container} pointerEvents="none">
@@ -43,6 +51,13 @@ const HUD = memo(({ player, level, xp, elapsedTime, kills, score, bossActive,
           <Text style={styles.kills}>{kills}</Text>
         </View>
       </View>
+
+      {/* Endless : indicateur du multiplicateur de difficulté */}
+      {endlessMultStr && (
+        <View style={styles.endlessMultRow}>
+          <Text style={styles.endlessMultText}>☠ Difficulté {endlessMultStr}</Text>
+        </View>
+      )}
 
       {/* Boss indicator */}
       {bossActive && (
@@ -156,6 +171,15 @@ const styles = StyleSheet.create({
   xpText: { fontSize: 9, color: PALETTE.textMuted, minWidth: 55, textAlign: 'right' },
 
   endlessTag: { fontSize: 12, color: '#BB44FF', fontWeight: 'bold', marginLeft: 4 },
+
+  endlessMultRow: {
+    alignSelf: 'center',
+    backgroundColor: 'rgba(187,68,255,0.15)',
+    borderRadius: 6, borderWidth: 1, borderColor: '#BB44FF55',
+    paddingHorizontal: 10, paddingVertical: 2,
+    marginBottom: 4,
+  },
+  endlessMultText: { fontSize: 11, color: '#CC88FF', fontWeight: 'bold', letterSpacing: 1 },
 
   ambushContainer: {
     flexDirection: 'row',

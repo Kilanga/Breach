@@ -29,6 +29,8 @@ export default function GameOverScreen() {
         {lastRun && (
           <View style={styles.stats}>
             <StatRow label="Temps de survie" value={formatTime(lastRun.survivalTime)} />
+            <StatRow label="Score"           value={(lastRun.score || 0).toLocaleString()} />
+            <StatRow label="Niveau atteint"  value={`Niv. ${lastRun.level || 1}`} />
             <StatRow label="Ennemis tués"    value={lastRun.kills} />
             <StatRow label="Classe"          value={lastRun.shape} />
           </View>
@@ -38,6 +40,12 @@ export default function GameOverScreen() {
           <Text style={styles.bestLabel}>🏆 Meilleur temps</Text>
           <Text style={styles.bestValue}>{bm}:{bs.toString().padStart(2,'0')}</Text>
         </View>
+        {meta.bestScore > 0 && (
+          <View style={[styles.bestRow, { marginTop: -12, borderColor: '#FFCC4440' }]}>
+            <Text style={styles.bestLabel}>🥇 Meilleur score</Text>
+            <Text style={styles.bestValue}>{(meta.bestScore).toLocaleString()}</Text>
+          </View>
+        )}
 
         <TouchableOpacity style={styles.btn} onPress={goToShapeSelect} activeOpacity={0.8}>
           <Text style={styles.btnText}>🔄 Rejouer</Text>

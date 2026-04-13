@@ -47,7 +47,7 @@ const UpgradeChoiceScreen = memo(({ choices, activeUpgrades, level, onSelect }) 
               key={upgrade.id}
               upgrade={upgrade}
               onSelect={onSelect}
-              synergy={activeUpgrades.some(u => u.color === upgrade.color) && upgrade.rarity !== 'curse'}
+              synergy={activeUpgrades.filter(u => u.color === upgrade.color).length >= 3 && upgrade.rarity !== 'curse'}
             />
           ))}
         </ScrollView>
