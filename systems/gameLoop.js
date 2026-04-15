@@ -1,3 +1,13 @@
+import { ENEMY_INFO, CLASS_INFO, ARENA_WIDTH, ARENA_HEIGHT,
+         PLAYER_RADIUS, BASE_ENEMY_RADIUS, XP_PER_LEVEL_BASE, XP_LEVEL_SCALING,
+         ENEMY_TYPES, SPEED_SCALE, SHOOTER_DESIRED_DIST, EXPLOSION_RADIUS,
+         FRACTURE_RADIUS, SHOCKWAVE_RADIUS, XP_ATTRACT_RADIUS_MULT,
+         XP_ATTRACT_SPEED, INVINCIBLE_DURATION } from '../constants';
+import { getActiveWaveConfig, getEnemyScaling, getBossAtTime } from './waveSystem';
+import { getAttackFn, getAttackCooldown, fireShooterProjectile } from './attackSystem';
+import { hasUpgrade } from './upgradeSystem';
+import { makeId } from '../utils/makeId';
+
 // Boss L'Architecte — crée des murs d'énergie et invoque des Spectres Zigzag
 function bossAI_architect(enemy, player, dt, projs, particles, s) {
   // Se déplace lentement vers le centre de l'arène
@@ -87,23 +97,110 @@ function bossAI_architect(enemy, player, dt, projs, particles, s) {
     patternPhase: phase,
   };
 }
+
+// ─── IA Ennemis ───────────────────────────────────────────────────────────────
+
+function updateEnemies(s, dt) {
+  const player = s.player;
+  let newEnemyProjs = [...s.enemyProjectiles];
+  let newParticles  = [...s.particles];
+  let newSummons    = [];
+  let healEvents    = []; // { id, amount } — appliqués après le map pour éviter les mutations
+
+  // ── Pass 1 : IA + status effects ────────────────────────────────────────────
+  let newEnemies = s.enemies
+    .filter(Boolean)
+    .map(e => {
+      let enemy = { ...e };
+
+      // Stun
+      if (enemy.stunTimer > 0) {
+        enemy.stunTimer = Math.max(0, enemy.stunTimer - dt);
+        if (enemy.burnTimer > 0) {
+          enemy.burnTimer -= dt;
+          enemy.hp -= enemy.burnDamage * dt;
+        }
+        if (enemy.hp <= 0) {
+          // Animation de mort : explosion de particules
+          for (let i = 0; i < 10; i++) {
+            const angle = (i / 10) * Math.PI * 2 + Math.random() * 0.2;
+            const speed = 60 + Math.random() * 40;
+            newParticles.push({
+              id: makeId(),
+              x: enemy.x,
+              y: enemy.y,
+              vx: Math.cos(angle) * speed,
+              vy: Math.sin(angle) * speed,
+              radius: 6 + Math.random() * 4,
+              color: enemy.color,
+              life: 0.45 + Math.random() * 0.18,
+              maxLife: 0.6,
+            });
+          }
+          return null;
+        }
+        return enemy;
+      }
+      // Slow (ralentissement Oracle ou Prémonition)
+      if (enemy.slowTimer > 0) {
+        enemy.slowTimer = Math.max(0, enemy.slowTimer - dt);
+        // Appliquer le slow
+        enemy = { ...enemy, speed: (enemy.baseSpeed || enemy.speed) * (1 - (enemy.slowAmount || 0.5)) };
+        if (enemy.slowTimer <= 0) {
+          // Fin du slow, restaurer la vitesse
+          enemy = { ...enemy };
+          delete enemy.slowTimer;
+          delete enemy.slowAmount;
+        }
+      }
+      // Freeze
+      if (enemy.freezeTimer > 0) {
+        enemy.freezeTimer = Math.max(0, enemy.freezeTimer - dt);
+        return enemy;
+      }
+      // Brûlure
+      if (enemy.burnTimer > 0) {
+        enemy.burnTimer -= dt;
+        enemy.hp -= enemy.burnDamage * dt;
+        if (enemy.hp <= 0) {
+          // Animation de mort : explosion de particules
+          for (let i = 0; i < 10; i++) {
+            const angle = (i / 10) * Math.PI * 2 + Math.random() * 0.2;
+            const speed = 60 + Math.random() * 40;
+            newParticles.push({
+              id: makeId(),
+              x: enemy.x,
+              y: enemy.y,
+              vx: Math.cos(angle) * speed,
+              vy: Math.sin(angle) * speed,
+              radius: 6 + Math.random() * 4,
+              color: enemy.color,
+              life: 0.45 + Math.random() * 0.18,
+              maxLife: 0.6,
+            });
+          }
+          return null;
+        }
+      }
+
+      switch (enemy.behavior) {
+        case 'zigzag':
+          enemy = zigzagAI(enemy, player, dt);
+          break;
         case 'boss_architect':
           enemy = bossAI_architect(enemy, player, dt, newEnemyProjs, newParticles, s);
           break;
-/**
- * BREACH — Game Loop temps réel
- * Gère : déplacements, IA ennemis, projectiles, collisions, XP, upgrades triggers
- */
 
-import { ENEMY_INFO, CLASS_INFO, ARENA_WIDTH, ARENA_HEIGHT,
-         PLAYER_RADIUS, BASE_ENEMY_RADIUS, XP_PER_LEVEL_BASE, XP_LEVEL_SCALING,
-         ENEMY_TYPES, SPEED_SCALE, SHOOTER_DESIRED_DIST, EXPLOSION_RADIUS,
-         FRACTURE_RADIUS, SHOCKWAVE_RADIUS, XP_ATTRACT_RADIUS_MULT,
-         XP_ATTRACT_SPEED, INVINCIBLE_DURATION } from '../constants';
-import { getActiveWaveConfig, getEnemyScaling, getBossAtTime } from './waveSystem';
-import { getAttackFn, getAttackCooldown, fireShooterProjectile } from './attackSystem';
-import { hasUpgrade } from './upgradeSystem';
-import { makeId } from '../utils/makeId';
+      }
+      return enemy;
+    })
+
+    .filter(Boolean);
+
+  // Appliquer les nouveaux projectiles, particules, etc.
+  return { ...s, enemies: newEnemies, enemyProjectiles: newEnemyProjs, particles: newParticles };
+}
+
 
 // ─── Factory ──────────────────────────────────────────────────────────────────
 
@@ -479,227 +576,6 @@ function spawnEnemy(type, scaling) {
 
 // ─── IA Ennemis ───────────────────────────────────────────────────────────────
 
-function updateEnemies(s, dt) {
-  const player = s.player;
-  let newEnemyProjs = [...s.enemyProjectiles];
-  let newParticles  = [...s.particles];
-  let newSummons    = [];
-  let healEvents    = []; // { id, amount } — appliqués après le map pour éviter les mutations
-
-  // ── Pass 1 : IA + status effects ────────────────────────────────────────────
-  let newEnemies = s.enemies
-    .filter(Boolean)
-    .map(e => {
-      let enemy = { ...e };
-
-      // Stun
-      if (enemy.stunTimer > 0) {
-        enemy.stunTimer = Math.max(0, enemy.stunTimer - dt);
-        if (enemy.burnTimer > 0) {
-          enemy.burnTimer -= dt;
-          enemy.hp -= enemy.burnDamage * dt;
-        }
-        if (enemy.hp <= 0) {
-          // Animation de mort : explosion de particules
-          for (let i = 0; i < 10; i++) {
-            const angle = (i / 10) * Math.PI * 2 + Math.random() * 0.2;
-            const speed = 60 + Math.random() * 40;
-            newParticles.push({
-              id: makeId(),
-              x: enemy.x,
-              y: enemy.y,
-              vx: Math.cos(angle) * speed,
-              vy: Math.sin(angle) * speed,
-              radius: 6 + Math.random() * 4,
-              color: enemy.color,
-              life: 0.45 + Math.random() * 0.18,
-              maxLife: 0.6,
-            });
-          }
-          return null;
-        }
-        return enemy;
-      }
-      // Slow (ralentissement Oracle ou Prémonition)
-      if (enemy.slowTimer > 0) {
-        enemy.slowTimer = Math.max(0, enemy.slowTimer - dt);
-        // Appliquer le slow
-        enemy = { ...enemy, speed: (enemy.baseSpeed || enemy.speed) * (1 - (enemy.slowAmount || 0.5)) };
-        if (enemy.slowTimer <= 0) {
-          // Fin du slow, restaurer la vitesse
-          enemy = { ...enemy };
-          delete enemy.slowTimer;
-          delete enemy.slowAmount;
-        }
-      }
-      // Freeze
-      if (enemy.freezeTimer > 0) {
-        enemy.freezeTimer = Math.max(0, enemy.freezeTimer - dt);
-        return enemy;
-      }
-      // Brûlure
-      if (enemy.burnTimer > 0) {
-        enemy.burnTimer -= dt;
-        enemy.hp -= enemy.burnDamage * dt;
-        if (enemy.hp <= 0) {
-          // Animation de mort : explosion de particules
-          for (let i = 0; i < 10; i++) {
-            const angle = (i / 10) * Math.PI * 2 + Math.random() * 0.2;
-            const speed = 60 + Math.random() * 40;
-            newParticles.push({
-              id: makeId(),
-              x: enemy.x,
-              y: enemy.y,
-              vx: Math.cos(angle) * speed,
-              vy: Math.sin(angle) * speed,
-              radius: 6 + Math.random() * 4,
-              color: enemy.color,
-              life: 0.45 + Math.random() * 0.18,
-              maxLife: 0.6,
-            });
-          }
-          return null;
-        }
-      }
-
-      switch (enemy.behavior) {
-                case 'zigzag':
-                  enemy = zigzagAI(enemy, player, dt);
-                  break;
-        // ─── IA Spectre Zigzag ─────────────────────────────────────────────────────
-        function zigzagAI(enemy, player, dt) {
-          // Init timers si absents
-          let zigzagTimer = (enemy.zigzagTimer || 0) + dt;
-          let zigzagDir = enemy.zigzagDir || 0; // -1 = gauche, 1 = droite, 0 = tout droit
-          const interval = ENEMY_INFO.spectre_zigzag.zigzagInterval || 1.5;
-          const dist = ENEMY_INFO.spectre_zigzag.zigzagDistance || 60;
-
-          // Changement de direction toutes les X secondes
-          if (zigzagTimer >= interval) {
-            zigzagTimer = 0;
-            // Choix aléatoire gauche/droite
-            zigzagDir = Math.random() < 0.5 ? -1 : 1;
-          }
-
-          // Calcul direction vers joueur
-          const dx = player.x - enemy.x;
-          const dy = player.y - enemy.y;
-          const len = Math.sqrt(dx * dx + dy * dy) || 1;
-          // Direction principale
-          let dirX = dx / len;
-          let dirY = dy / len;
-          // Ajout du zigzag perpendiculaire
-          if (zigzagDir !== 0) {
-            // Perpendiculaire à la trajectoire
-            const perpX = -dirY;
-            const perpY = dirX;
-            dirX += perpX * 0.7 * zigzagDir;
-            dirY += perpY * 0.7 * zigzagDir;
-            // Normaliser
-            const l2 = Math.sqrt(dirX * dirX + dirY * dirY) || 1;
-            dirX /= l2;
-            dirY /= l2;
-          }
-          // Avancer
-          const spd = enemy.speed * SPEED_SCALE * dt;
-          const nx = enemy.x + dirX * spd;
-          const ny = enemy.y + dirY * spd;
-          return {
-            ...enemy,
-            x: nx,
-            y: ny,
-            zigzagTimer,
-            zigzagDir,
-          };
-        }
-        case 'chase':
-          enemy = chasePlayer(enemy, player, dt);
-          break;
-        case 'shoot':
-          enemy = shooterAI(enemy, player, dt, newEnemyProjs);
-          break;
-        case 'healer': {
-          const result = healerAI(enemy, player, s.enemies, dt); // lit l'état original (pas de mutation)
-          enemy = result.enemy;
-          healEvents = healEvents.concat(result.healEvents);
-          break;
-        }
-        case 'summon': {
-          const result = summonerAI(enemy, player, dt, s.elapsedTime);
-          enemy = result.enemy;
-          newSummons = newSummons.concat(result.summons);
-          break;
-        }
-        case 'boss_spiral':
-        case 'boss_void':
-          enemy = bossAI_void(enemy, player, dt, newEnemyProjs);
-          break;
-        case 'boss_cinder':
-          enemy = bossAI_cinder(enemy, player, dt, newEnemyProjs);
-          break;
-        case 'boss_mirror':
-          enemy = bossAI_mirror(enemy, player, dt, newEnemyProjs);
-          break;
-        case 'boss_pulse':
-          enemy = bossAI_pulse(enemy, player, dt, newEnemyProjs);
-          break;
-        case 'boss_rift':
-          enemy = bossAI_rift(enemy, player, dt, newEnemyProjs);
-          break;
-        case 'boss_prophet':
-          enemy = bossAI_prophet(enemy, player, dt, newEnemyProjs, newParticles);
-          break;
-      }
-      return enemy;
-    })
-    .filter(Boolean);
-
-  // ── Appliquer les soins du Guérisseur (sans mutation des objets originaux) ──
-  for (const { id, amount } of healEvents) {
-    const idx = newEnemies.findIndex(e => e && e.id === id);
-    if (idx >= 0) {
-      newEnemies[idx] = {
-        ...newEnemies[idx],
-        hp: Math.min(newEnemies[idx].hp + amount, newEnemies[idx].maxHp),
-      };
-    }
-  }
-
-  // ── Invocations du Summoner ──────────────────────────────────────────────────
-  for (const summon of newSummons) newEnemies.push(summon);
-
-  // ── Pass 2 : Collisions joueur (boucle séparée pour éviter les mutations de s) ──
-  const thornsCount = s.activeUpgrades.filter(u => u.id === 'thorns').length;
-  for (let i = 0; i < newEnemies.length; i++) {
-    const enemy = newEnemies[i];
-    if (!enemy || !s.alive) continue;
-
-    const dx = player.x - enemy.x;
-    const dy = player.y - enemy.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-
-    if (s.invincibleTimer <= 0 && !s.player.shieldActive) {
-      if (dist < PLAYER_RADIUS + enemy.radius) {
-        s = damagePlayer(s, enemy.damage, true);
-        if (thornsCount > 0) {
-          newEnemies[i] = { ...enemy, hp: enemy.hp - thornsCount * 2 };
-        }
-        // Une seule collision par frame (invincibilité empêche les suivantes)
-      }
-    } else if (s.player.shieldActive) {
-      if (dist < PLAYER_RADIUS + enemy.radius) {
-        s = { ...s, player: { ...s.player, shieldActive: false } };
-      }
-    }
-  }
-
-  return {
-    ...s,
-    enemies: newEnemies.filter(e => e && e.hp > 0),
-    enemyProjectiles: newEnemyProjs,
-    particles: newParticles,
-  };
-}
 
 function chasePlayer(enemy, player, dt) {
   const dx = player.x - enemy.x;

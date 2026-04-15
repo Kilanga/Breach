@@ -124,7 +124,9 @@ export const INVINCIBLE_DURATION    = 0.5; // secondes d'invincibilité après u
 export const XP_PER_LEVEL_BASE = 50;   // XP nécessaire pour le niveau 1
 export const XP_LEVEL_SCALING  = 1.35; // multiplicateur par niveau
 
+
 // ─── Classes du joueur ────────────────────────────────────────────────────────
+export const PLAYER_CLASSES = {
   TRIANGLE: 'triangle', // Assassin  — projectile linéaire (pierce)
   CIRCLE:   'circle',   // Arcaniste — AoE circulaire
   HEXAGON:  'hexagon',  // Colosse   — zone au contact

@@ -85,7 +85,10 @@ export default function App() {
       case GAME_PHASES.SETTINGS:       return <SettingsScreen />;
       case GAME_PHASES.TALENT_TREE:    return <TalentTreeScreen />;
       case GAME_PHASES.TUTORIAL:       return <TutorialScreen />;
-      case GAME_PHASES.LEADERBOARD:    return <(require('./screens/LeaderboardScreen').default) />;
+      case GAME_PHASES.LEADERBOARD: {
+        const LeaderboardScreen = require('./screens/LeaderboardScreen').default;
+        return <LeaderboardScreen />;
+      }
       default:                         return <MenuScreen />;
     }
   };
