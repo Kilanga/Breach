@@ -57,6 +57,8 @@ const SCALE_X = ARENA_DISPLAY_W / ARENA_WIDTH;
 const SCALE_Y = ARENA_DISPLAY_H / ARENA_HEIGHT;
 
 export default function ArenaScreen() {
+    // Highlight temporaire du joueur (level-up, heal)
+    const [highlightPlayer, setHighlightPlayer] = useState(false);
   const t = useT();
   const selectedShape    = useGameStore(s => s.selectedShape);
   const gameMode         = useGameStore(s => s.gameMode);
@@ -155,6 +157,11 @@ export default function ArenaScreen() {
     const newState = updateGame(s, dt, inputRef.current);
     gameStateRef.current = newState;
 
+    // Highlight sur level-up ou heal
+    if (newState.level > prevLevel || newState.player.hp > prevHp) {
+      setHighlightPlayer(true);
+    }
+
     // Retours haptiques
     if (sfxEnabledRef.current) {
       if (newState.player.hp < prevHp) {
@@ -166,12 +173,35 @@ export default function ArenaScreen() {
 
     // UI update
     setUiState(extractUiState(newState));
+    // Reset du highlight après 700ms
+    useEffect(() => {
+      if (highlightPlayer) {
+        const to = setTimeout(() => setHighlightPlayer(false), 700);
+        return () => clearTimeout(to);
+      }
+    }, [highlightPlayer]);
 
     if (newState.level > prevLevel) {
       trackEvent('level_gained', {
         from: prevLevel,
         to: newState.level,
         elapsedTime: newState.elapsedTime,
+      });
+    }
+    if (newState.player.hp < prevHp) {
+      trackEvent('player_damaged', {
+        from: prevHp,
+        to: newState.player.hp,
+        elapsedTime: newState.elapsedTime,
+        level: newState.level,
+      });
+    }
+    if (newState.player.hp > prevHp) {
+      trackEvent('player_healed', {
+        from: prevHp,
+        to: newState.player.hp,
+        elapsedTime: newState.elapsedTime,
+        level: newState.level,
       });
     }
 
@@ -296,6 +326,11 @@ export default function ArenaScreen() {
     // overgrowth : soin si upgrade vert
     if (upgrade.color === 'green' && newUpgrades.some(u => u.id === 'overgrowth')) {
       newPlayer.hp = Math.min(newPlayer.hp + 3, newPlayer.maxHp);
+      trackEvent('player_healed', {
+        reason: 'overgrowth',
+        to: newPlayer.hp,
+        level: s.level,
+      });
     }
 
     gameStateRef.current = {
@@ -383,6 +418,7 @@ export default function ArenaScreen() {
           scaleX={SCALE_X}
           scaleY={SCALE_Y}
           palette={palette}
+          highlightPlayer={highlightPlayer}
         />
       </View>
 

@@ -3,8 +3,8 @@
  * Affiche HP, XP, niveau, timer de survie, score, kills, indicateur d'embuscade
  */
 
-import React, { memo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { memo, useRef, useEffect } from 'react';
+import { View, Text, StyleSheet, Animated } from 'react-native';
 import { PALETTE, CLASS_INFO, GAME_MODE, VICTORY_TIME } from '../../constants';
 import { xpForLevel } from '../../systems/gameLoop';
 
@@ -24,6 +24,24 @@ const HUD = memo(({ player, level, xp, elapsedTime, kills, score, bossActive,
   const hpPct  = Math.max(0, Math.min(1, player.hp / player.maxHp));
   const xpNeeded = xpForLevel(level);
   const xpPct  = Math.min(1, xp / xpNeeded);
+
+  // Animations fluides pour les barres
+  const hpAnim = useRef(new Animated.Value(hpPct)).current;
+  const xpAnim = useRef(new Animated.Value(xpPct)).current;
+  useEffect(() => {
+    Animated.timing(hpAnim, {
+      toValue: hpPct,
+      duration: 400,
+      useNativeDriver: false,
+    }).start();
+  }, [hpPct]);
+  useEffect(() => {
+    Animated.timing(xpAnim, {
+      toValue: xpPct,
+      duration: 400,
+      useNativeDriver: false,
+    }).start();
+  }, [xpPct]);
   const classInfo = CLASS_INFO[player.shape] || {};
   const fontScale = 1; // Assuming a default fontScale, replace with actual logic if needed
   const classColor = classInfo.color || PALETTE.textPrimary;
@@ -60,28 +78,39 @@ const HUD = memo(({ player, level, xp, elapsedTime, kills, score, bossActive,
         </View>
       )}
 
-      {/* Boss indicator */}
+      {/* Boss indicator animé */}
       {bossActive && (
-        <View style={styles.bossWarning}>
+        <Animated.View style={[styles.bossWarning, { opacity: bossActive ? 1 : 0, transform: [{ scale: bossActive ? 1.1 : 1 }] }] }>
           <Text style={styles.bossText}>⚠ BOSS</Text>
-        </View>
+        </Animated.View>
       )}
 
-      {/* HP bar */}
+      {/* HP bar animée */}
       <View style={styles.hpContainer}>
         <View style={styles.hpBar}>
-          <View style={[styles.hpFill, { width: `${hpPct * 100}%`, backgroundColor: hpPct > 0.5 ? PALETTE.hp : hpPct > 0.25 ? '#FFCC44' : '#FF4444' }]} />
+          <Animated.View style={[styles.hpFill, {
+            width: hpAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: ['0%', '100%']
+            }),
+            backgroundColor: hpPct > 0.5 ? PALETTE.hp : hpPct > 0.25 ? '#FFCC44' : '#FF4444',
+          }]} />
         </View>
         <Text style={styles.hpText}>{Math.ceil(player.hp)}/{player.maxHp}</Text>
       </View>
 
-      {/* XP bar + niveau */}
+      {/* XP bar + niveau animée */}
       <View style={styles.xpContainer}>
         <Text style={[styles.levelBadge, { backgroundColor: classColor + '33', color: classColor, borderColor: classColor }]}>
           Niv {level}
         </Text>
         <View style={styles.xpBar}>
-          <View style={[styles.xpFill, { width: `${xpPct * 100}%` }]} />
+          <Animated.View style={[styles.xpFill, {
+            width: xpAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: ['0%', '100%']
+            })
+          }]} />
         </View>
         <Text style={styles.xpText}>{xp}/{xpNeeded} XP</Text>
       </View>

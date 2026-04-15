@@ -27,7 +27,7 @@ function vecToNearest(player, enemies) {
 /**
  * Oracle — onde qui ralentit les ennemis proches
  */
-export function fireOracle(player, enemies, upgrades) {
+export function fireOracle(player) {
   const info = CLASS_INFO.octagon;
   // Onde visuelle, applique un effet de slow aux ennemis dans le rayon
   return [{
@@ -38,11 +38,6 @@ export function fireOracle(player, enemies, upgrades) {
     radius: info.premonitionRadius,
     aoe: true,
     color: info.color,
-    owner: 'player',
-    lifeMs: 400,
-    visualType: 'premonition',
-    slow: info.slowAmount,
-    slowDuration: info.slowDuration,
   }];
 }
 
@@ -58,19 +53,25 @@ export function fireAssassin(player, enemies, upgrades) {
   const info = CLASS_INFO.triangle;
   const { dmg, isCrit } = computeAttackDamage(player.attack, upgrades);
   const vf = visualFlags(upgrades, isCrit);
-  return [{
-    id: makeId(),
-    x: player.x, y: player.y,
-    vx: nx * info.projectileSpeed, vy: ny * info.projectileSpeed,
-    damage: dmg,
-    radius: isCrit ? info.projectileRadius * 1.6 : info.projectileRadius,
-    piercing: true,
-    piercedIds: [],
-    color: CLASS_INFO.triangle.color,
-    owner: 'player',
-    lifeMs: 2500,
-    ...vf,
-  }];
+    // Rupture : bonus dégâts à distance
+    let ruptureMult = 1;
+    const rupture = upgrades.find(u => u.id === 'rupture');
+    if (rupture && dist > (rupture.effect.distance || 100)) {
+      ruptureMult = rupture.effect.multiplier || 1.2;
+    }
+    return [{
+      id: makeId(),
+      x: player.x, y: player.y,
+      vx: nx * info.projectileSpeed, vy: ny * info.projectileSpeed,
+      damage: Math.round(dmg * ruptureMult),
+      radius: info.projectileRadius,
+      piercing: true,
+      piercedIds: [],
+      color: CLASS_INFO.triangle.color,
+      owner: 'player',
+      lifeMs: 2500,
+      ...vf,
+    }];
 }
 
 /**

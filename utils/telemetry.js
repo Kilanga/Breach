@@ -1,3 +1,8 @@
+// Définir __DEV__ globalement si absent
+if (typeof global !== 'undefined' && typeof global.__DEV__ === 'undefined') {
+  global.__DEV__ = false;
+}
+
 /**
  * BREACH — Télémétrie locale (point d'entrée unique)
  *

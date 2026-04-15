@@ -9,6 +9,12 @@ export const ALL_UPGRADES = [
 
   // ── Rouge (offensif) ──────────────────────────────────────────────────────
   {
+    id: 'rupture', name: 'Rupture', color: UPGRADE_COLORS.RED, rarity: 'rare', maxStack: 2,
+    description: 'Les projectiles infligent 20% de dégâts supplémentaires aux ennemis à plus de 100px.',
+    effect: { type: 'passive', trigger: 'onAttack', action: 'bonusFarDamage', distance: 100, multiplier: 1.2 },
+    tags: ['dégâts', 'distance'],
+  },
+  {
     id: 'overload', name: 'Surcharge', color: UPGRADE_COLORS.RED, rarity: 'common', maxStack: 3,
     description: '+3 Attaque.',
     effect: { type: 'stat', stat: 'attack', value: 3 },
@@ -83,6 +89,12 @@ export const ALL_UPGRADES = [
 
   // ── Bleu (utilitaire / défensif) ──────────────────────────────────────────
   {
+    id: 'barriere', name: 'Barrière Adaptative', color: UPGRADE_COLORS.BLUE, rarity: 'epic', maxStack: 1,
+    description: 'Après avoir subi des dégâts, gagne un bouclier temporaire qui absorbe 10 dégâts pendant 3s (20s de recharge).',
+    effect: { type: 'passive', trigger: 'onDamaged', action: 'adaptiveShield', value: 10, duration: 3, cooldown: 20 },
+    tags: ['défense', 'bouclier', 'réactif'],
+  },
+  {
     id: 'absorb', name: 'Absorption', color: UPGRADE_COLORS.BLUE, rarity: 'common', maxStack: 3,
     description: '+2 Défense.',
     effect: { type: 'stat', stat: 'defense', value: 2 },
@@ -138,6 +150,12 @@ export const ALL_UPGRADES = [
   },
 
   // ── Vert (soin / support) ─────────────────────────────────────────────────
+  {
+    id: 'symbiose', name: 'Symbiose', color: UPGRADE_COLORS.GREEN, rarity: 'rare', maxStack: 2,
+    description: 'À chaque fois qu’un orbe d’XP est ramassé, soigne 2 PV instantanément.',
+    effect: { type: 'passive', trigger: 'onXPPickup', action: 'heal', value: 2 },
+    tags: ['soin', 'xp'],
+  },
   {
     id: 'vitality', name: 'Vitalité', color: UPGRADE_COLORS.GREEN, rarity: 'common', maxStack: 4,
     description: '+4 PV max.',

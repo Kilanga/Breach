@@ -1,4 +1,3 @@
-import { PALETTE } from './Palette';
 import { Platform, ToastAndroid, Alert } from 'react-native';
 
 export function showFeedback(message, type = 'info') {

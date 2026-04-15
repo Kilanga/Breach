@@ -4,7 +4,7 @@
 
 import { GAME_PHASES, GAME_MODE } from '../../constants';
 
-export function createNavigationSlice(set, get) {
+export function createNavigationSlice(set) {
   return {
     phase: GAME_PHASES.MENU,
 
@@ -25,6 +25,8 @@ export function createNavigationSlice(set, get) {
     }),
 
     goToShapeSelect: () => set({ phase: GAME_PHASES.SHAPE_SELECT }),
+    goToLeaderboard: () => set({ phase: GAME_PHASES.LEADERBOARD }),
+    goToTutorial: () => set({ phase: GAME_PHASES.TUTORIAL }),
     goToUpgradeChoice: () => set({ phase: GAME_PHASES.UPGRADE_CHOICE }),
     goToGameOver: () => set({ phase: GAME_PHASES.GAME_OVER }),
     goToVictory: () => set({ phase: GAME_PHASES.VICTORY }),

@@ -125,16 +125,31 @@ export const XP_PER_LEVEL_BASE = 50;   // XP nécessaire pour le niveau 1
 export const XP_LEVEL_SCALING  = 1.35; // multiplicateur par niveau
 
 // ─── Classes du joueur ────────────────────────────────────────────────────────
-export const PLAYER_SHAPES = {
   TRIANGLE: 'triangle', // Assassin  — projectile linéaire (pierce)
   CIRCLE:   'circle',   // Arcaniste — AoE circulaire
   HEXAGON:  'hexagon',  // Colosse   — zone au contact
   SHADOW:   'shadow',   // Ombre     — embuscade (premier projectile ×2)
   PALADIN:  'paladin',  // Paladin   — aura + frappe radiale
   OCTAGON:  'octagon',  // Oracle    — onde de prémonition
+  ENGINEER: 'engineer', // Ingénieur — pose des tourelles
 };
 
 export const CLASS_INFO = {
+    engineer: {
+      name: 'Ingénieur', short: 'ING', color: '#7EC8E3',
+      baseStats: { maxHp: 90, attack: 7, defense: 5, speed: 2.6 },
+      attackType: 'turret', // pose des tourelles
+      attackCooldown: 2.5,  // pose une tourelle toutes les 2.5s
+      turretCount: 2,       // nombre de tourelles actives max (scalable)
+      turretLifetime: 8,    // durée de vie d'une tourelle (s)
+      turretRange: 140,     // portée d'attaque des tourelles
+      turretAttack: 6,      // dégâts des tirs de tourelle
+      turretCooldown: 1.1,  // délai entre tirs de tourelle
+      desc: 'Pose automatiquement des tourelles qui tirent sur les ennemis proches.',
+      locked: true,
+      purchasable: true,
+      purchaseCost: 35,
+    },
   triangle: {
     name: 'Assassin',  short: 'ASS', color: '#00FFCC',
     baseStats: { maxHp: 80,  attack: 12, defense: 2, speed: 3.2 },
@@ -218,9 +233,31 @@ export const ENEMY_TYPES = {
   BOSS_PULSE:    'boss_pulse',
   BOSS_RIFT:     'boss_rift',
   BOSS_PROPHET:  'boss_prophet',
+  SPECTRE_ZIGZAG: 'spectre_zigzag',
+  BOSS_ARCHITECT: 'boss_architect',
 };
 
 export const ENEMY_INFO = {
+      boss_architect: {
+        name: "L'Architecte", short: 'ARC', color: '#FFD700',
+        baseHp: 1800, baseDamage: 24, baseSpeed: 1.1, radius: 38,
+        xpValue: 220, scoreValue: 600,
+        behavior: 'boss_architect', isBoss: true,
+        special: {
+          energyWalls: true, // crée des murs d'énergie
+          summonSpectres: true, // invoque des Spectres Zigzag
+        },
+        desc: "Crée des murs d'énergie qui traversent l'arène et invoque des Spectres Zigzag.",
+      },
+    spectre_zigzag: {
+      name: 'Spectre Zigzag', short: 'SPZ', color: '#66CCFF',
+      baseHp: 22, baseDamage: 7, baseSpeed: 2.0, radius: 13,
+      xpValue: 9, scoreValue: 18,
+      behavior: 'zigzag', // fonce vers le joueur, zigzague toutes les 1.5s
+      zigzagInterval: 1.5, zigzagDistance: 60,
+      ghost: true, // peut traverser les autres ennemis
+      trail: true, // laisse une traînée visuelle
+    },
   chaser: {
     name: 'Écumeur', short: 'ÉCU', color: '#FF4444',
     baseHp: 30, baseDamage: 5, baseSpeed: 2.2, radius: 14,
@@ -323,6 +360,8 @@ export const GAME_PHASES = {
   ACHIEVEMENTS:   'achievements',
   SETTINGS:       'settings',
   TALENT_TREE:    'talentTree',
+  TUTORIAL:       'tutorial',
+  LEADERBOARD:    'leaderboard',
 };
 
 // ─── Palette UI ───────────────────────────────────────────────────────────────

@@ -9,10 +9,22 @@ import React, { memo } from 'react';
 import Svg, { Circle, Polygon, Rect, G, Line, Text as SvgText } from 'react-native-svg';
 import { PALETTE, CLASS_INFO, PLAYER_RADIUS } from '../../constants';
 
-const ArenaRenderer = memo(({ gameState, arenaWidth, arenaHeight, scaleX, scaleY, palette = PALETTE }) => {
+const ArenaRenderer = memo(({ gameState, arenaWidth, arenaHeight, scaleX, scaleY, palette = PALETTE, highlightPlayer = false }) => {
   if (!gameState) return null;
-  const { player, enemies, playerProjectiles, enemyProjectiles,
-          xpOrbs, particles, activeUpgrades = [], chainBoostActive = false } = gameState;
+    const { player, enemies, playerProjectiles, enemyProjectiles,
+      xpOrbs, particles, turrets = [], activeUpgrades = [], chainBoostActive = false } = gameState;
+  // Couleur et rayon des tourelles (Ingénieur)
+  const turretColor = '#7EC8E3';
+  const turretRadius = 13;
+      {/* ─── Tourelles de l'Ingénieur ─────────────────────────────── */}
+      {turrets.map(turret => (
+        <G key={turret.id}>
+          <Circle cx={turret.x} cy={turret.y} r={turretRadius} fill={turretColor} opacity={0.85} />
+          {/* Indicateur de durée de vie */}
+          <Circle cx={turret.x} cy={turret.y} r={turretRadius + 4} fill="none" stroke={turretColor} strokeWidth={2} opacity={0.35}
+            strokeDasharray={`${Math.max(0.01, (turret.life / (CLASS_INFO.engineer.turretLifetime || 1)) * 2 * Math.PI * (turretRadius + 4))},100`} />
+        </G>
+      ))}
 
   const sx = scaleX || 1;
   const sy = scaleY || 1;
@@ -40,8 +52,32 @@ const ArenaRenderer = memo(({ gameState, arenaWidth, arenaHeight, scaleX, scaleY
   const ringParticles   = particles.filter(p => p.type === 'ring');
   const normalParticles = particles.filter(p => !p.type);
 
+  // Particules murs d'énergie (boss Architecte)
+  const energyWalls = particles.filter(p => p.type === 'energy_wall');
+
   return (
     <Svg width={vw} height={vh} viewBox={`0 0 ${arenaWidth} ${arenaHeight}`}>
+            {/* ─── Murs d'énergie (boss Architecte) ───────────────────────────── */}
+            {energyWalls.map(wall => {
+              // Calcule les extrémités du mur
+              const x1 = wall.x - Math.cos(wall.angle) * wall.length / 2;
+              const y1 = wall.y - Math.sin(wall.angle) * wall.length / 2;
+              const x2 = wall.x + Math.cos(wall.angle) * wall.length / 2;
+              const y2 = wall.y + Math.sin(wall.angle) * wall.length / 2;
+              return (
+                <Line
+                  key={wall.id}
+                  x1={x1}
+                  y1={y1}
+                  x2={x2}
+                  y2={y2}
+                  stroke={wall.color || '#66CCFF'}
+                  strokeWidth={12}
+                  opacity={0.18 + 0.25 * (wall.life / wall.maxLife)}
+                  strokeDasharray="32,16"
+                />
+              );
+            })}
       {/* Fond */}
       <Rect x={0} y={0} width={arenaWidth} height={arenaHeight} fill={palette.bg} />
       {/* Grille décorative */}
@@ -122,7 +158,7 @@ const ArenaRenderer = memo(({ gameState, arenaWidth, arenaHeight, scaleX, scaleY
       {enemies.map(e => <EnemyShape key={e.id} enemy={e} />)}
 
       {/* ─── Joueur ─────────────────────────────────────────────────────── */}
-      <PlayerShape player={player} />
+      <PlayerShape player={player} highlight={highlightPlayer} />
     </Svg>
   );
 });
@@ -192,10 +228,29 @@ function PlayerProjectile({ proj }) {
 
 // ─── Joueur ───────────────────────────────────────────────────────────────────
 
-function PlayerShape({ player }) {
+import { useRef, useEffect } from 'react';
+import { Animated as RNAnimated } from 'react-native';
+
+function PlayerShape({ player, highlight }) {
   const { x, y, shape, hp, maxHp, shieldActive, invincibleTimer } = player;
   const color = CLASS_INFO[shape]?.color || '#FFFFFF';
   const opacity = invincibleTimer > 0 ? 0.5 : 1;
+
+  // Animation du halo de surbrillance
+  const haloAnim = useRef(new RNAnimated.Value(0)).current;
+  useEffect(() => {
+    if (highlight) {
+      haloAnim.setValue(1);
+      RNAnimated.timing(haloAnim, {
+        toValue: 0,
+        duration: 700,
+        useNativeDriver: false,
+      }).start();
+    }
+  }, [highlight]);
+
+  const haloOpacity = haloAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.7] });
+  const haloRadius = haloAnim.interpolate({ inputRange: [0, 1], outputRange: [PLAYER_RADIUS + 12, PLAYER_RADIUS + 24] });
 
   const inner = (() => {
     switch (shape) {
@@ -240,6 +295,22 @@ function PlayerShape({ player }) {
 
   return (
     <G>
+      {/* Halo animé lors du highlight */}
+      {highlight && (
+        <RNAnimated.View
+          style={{
+            position: 'absolute',
+            left: x - PLAYER_RADIUS - 24,
+            top: y - PLAYER_RADIUS - 24,
+            width: 2 * (PLAYER_RADIUS + 24),
+            height: 2 * (PLAYER_RADIUS + 24),
+            borderRadius: PLAYER_RADIUS + 24,
+            backgroundColor: color,
+            opacity: haloOpacity,
+            zIndex: 1,
+          }}
+        />
+      )}
       {inner}
       {/* HP bar au dessus */}
       <Rect x={x - 20} y={y - PLAYER_RADIUS - 10} width={40} height={4} rx={2} fill="rgba(255,255,255,0.15)" />
@@ -253,7 +324,7 @@ function PlayerShape({ player }) {
 // ─── Ennemis ──────────────────────────────────────────────────────────────────
 
 function EnemyShape({ enemy }) {
-  const { x, y, radius, color, hp, maxHp, isBoss, freezeTimer, burnTimer, stunTimer } = enemy;
+  const { x, y, radius, color, hp, maxHp, isBoss, freezeTimer, burnTimer, stunTimer, type } = enemy;
   const hpPct = Math.max(0, hp / maxHp);
 
   // Couleur modifiée si statut
@@ -272,8 +343,33 @@ function EnemyShape({ enemy }) {
     statusIcon = '⚡';
   }
 
+  // Traînée fantomatique pour le Spectre Zigzag
+  let trail = null;
+  if (type === 'spectre_zigzag') {
+    // Simple effet : plusieurs cercles translucides derrière le spectre
+    const trailCount = 4;
+    const trailAlpha = [0.18, 0.12, 0.08, 0.04];
+    const trailDist = 18;
+    trail = [];
+    // Utilise la direction zigzag pour placer la traînée
+    const angle = Math.atan2(enemy.zigzagDir ? -enemy.zigzagDir : 0, 1); // approximation
+    for (let i = 1; i <= trailCount; i++) {
+      trail.push(
+        <Circle
+          key={`trail${i}`}
+          cx={x - i * trailDist * Math.cos(angle)}
+          cy={y - i * trailDist * Math.sin(angle)}
+          r={radius * (1 - i * 0.12)}
+          fill="#66CCFF"
+          opacity={trailAlpha[i - 1]}
+        />
+      );
+    }
+  }
+
   return (
     <G>
+      {trail}
       <Circle cx={x} cy={y} r={radius} fill={color} opacity={0.9} />
       {overlayColor && <Circle cx={x} cy={y} r={radius} fill={overlayColor} opacity={0.45} />}
       {/* Icône de statut flottante */}

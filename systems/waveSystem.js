@@ -63,10 +63,11 @@ export const WAVE_CONFIGS = [
     fromSec: 300,
     toSec: 360,
     groups: [
-      { type: ENEMY_TYPES.CHASER,   count: 4, spawnInterval: 1.2 },
+      { type: ENEMY_TYPES.CHASER,   count: 3, spawnInterval: 1.2 },
       { type: ENEMY_TYPES.SHOOTER,  count: 2, spawnInterval: 2.8 },
       { type: ENEMY_TYPES.SUMMONER, count: 1, spawnInterval: 9.0 },
       { type: ENEMY_TYPES.BLOCKER,  count: 1, spawnInterval: 6.0 },
+      { type: ENEMY_TYPES.SPECTRE_ZIGZAG, count: 1, spawnInterval: 4.5 },
     ],
   },
   // ── Minute 6–7 ────────────────────────────────────────────────────────────
@@ -74,11 +75,12 @@ export const WAVE_CONFIGS = [
     fromSec: 360,
     toSec: 420,
     groups: [
-      { type: ENEMY_TYPES.CHASER,    count: 4, spawnInterval: 1.0 },
+      { type: ENEMY_TYPES.CHASER,    count: 3, spawnInterval: 1.0 },
       { type: ENEMY_TYPES.SHOOTER,   count: 3, spawnInterval: 2.5 },
       { type: ENEMY_TYPES.SUMMONER,  count: 1, spawnInterval: 8.0 },
       { type: ENEMY_TYPES.EXPLOSIVE, count: 2, spawnInterval: 4.0 },
       { type: ENEMY_TYPES.HEALER,    count: 1, spawnInterval: 6.0 },
+      { type: ENEMY_TYPES.SPECTRE_ZIGZAG, count: 2, spawnInterval: 4.0 },
     ],
   },
   // ── Minute 7+ : chaos total ───────────────────────────────────────────────
@@ -86,12 +88,13 @@ export const WAVE_CONFIGS = [
     fromSec: 420,
     toSec: Infinity,
     groups: [
-      { type: ENEMY_TYPES.CHASER,    count: 5, spawnInterval: 0.8 },
+      { type: ENEMY_TYPES.CHASER,    count: 4, spawnInterval: 0.8 },
       { type: ENEMY_TYPES.SHOOTER,   count: 3, spawnInterval: 2.0 },
       { type: ENEMY_TYPES.SUMMONER,  count: 2, spawnInterval: 6.0 },
       { type: ENEMY_TYPES.EXPLOSIVE, count: 2, spawnInterval: 3.0 },
       { type: ENEMY_TYPES.BLOCKER,   count: 2, spawnInterval: 4.0 },
       { type: ENEMY_TYPES.HEALER,    count: 2, spawnInterval: 5.0 },
+      { type: ENEMY_TYPES.SPECTRE_ZIGZAG, count: 3, spawnInterval: 3.5 },
     ],
   },
 ];
@@ -103,6 +106,7 @@ export const BOSS_SCHEDULE = [
   { atSec: 180, type: ENEMY_TYPES.BOSS_MIRROR },
   { atSec: 240, type: ENEMY_TYPES.BOSS_PULSE  },
   { atSec: 300, type: ENEMY_TYPES.BOSS_RIFT   },
+  { atSec: 360, type: ENEMY_TYPES.BOSS_ARCHITECT },
 ];
 
 /**

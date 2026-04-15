@@ -15,6 +15,7 @@ export default function MenuScreen() {
   const goToAchievements  = useGameStore(s => s.goToAchievements);
   const goToSettings      = useGameStore(s => s.goToSettings);
   const goToTalentTree    = useGameStore(s => s.goToTalentTree);
+  const setPhase          = useGameStore(s => s.setPhase);
   const meta              = useGameStore(s => s.meta);
   const t = useT();
 
@@ -37,6 +38,8 @@ export default function MenuScreen() {
 
       <View style={{ width: '100%', maxWidth: 340, marginBottom: 24 }}>
         <Button label={t('menu_btn_play')} primary onPress={goToShapeSelect} style={{ marginBottom: 8 }} />
+        <Button label="🏆 Leaderboard" onPress={() => setPhase('leaderboard')} style={{ marginBottom: 8 }} />
+        <Button label="📖 Tutoriel" onPress={() => setPhase('tutorial')} style={{ marginBottom: 8 }} />
         <Button label={t('menu_btn_talents')} onPress={goToTalentTree} />
         <Button label={t('menu_btn_achievements')} onPress={goToAchievements} />
         <Button label={t('menu_btn_settings')} onPress={goToSettings} />

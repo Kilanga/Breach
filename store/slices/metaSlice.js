@@ -6,6 +6,7 @@ import { PERMANENT_UPGRADES_CATALOG } from '../../constants';
 import { computePlayerStats } from '../../systems/upgradeSystem';
 import { CLASS_INFO } from '../../constants';
 import { trackEvent } from '../../utils/telemetry';
+import { submitScore } from '../../services/leaderboardApi';
 
 export const INITIAL_META = {
   permanentUpgrades:  [],
@@ -38,7 +39,7 @@ export function createMetaSlice(set, get) {
   return {
 
     // ── Fin de run ──────────────────────────────────────────────────────────
-    endRun: ({ shape, survivalTime, kills, won, score, level, activeUpgrades }) => {
+    endRun: async ({ shape, survivalTime, kills, won, score, level, activeUpgrades }) => {
       // Instrumentation télémétrie
       trackEvent('run_end', {
         shape,
@@ -85,6 +86,13 @@ export function createMetaSlice(set, get) {
       newMeta.talentPoints = (newMeta.talentPoints || 0) + Math.floor(fragmentsEarned / 5);
 
       set({ meta: newMeta });
+      // Soumission automatique du score au leaderboard
+      try {
+        const playerName = meta.playerName || 'Anonyme';
+        await submitScore({ playerName, score: score || 0, survivalTime, kills, shape });
+      } catch (e) {
+        // Ignore erreur réseau
+      }
       return { isWin, fragmentsEarned };
     },
 

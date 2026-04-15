@@ -23,6 +23,7 @@ import VictoryScreen      from './screens/VictoryScreen';
 import AchievementsScreen from './screens/AchievementsScreen';
 import SettingsScreen     from './screens/SettingsScreen';
 import TalentTreeScreen   from './screens/TalentTreeScreen';
+import TutorialScreen     from './screens/TutorialScreen';
 
 // Regroupe les phases pour détecter les transitions d'écran
 function screenGroup(phase) {
@@ -83,6 +84,8 @@ export default function App() {
       case GAME_PHASES.ACHIEVEMENTS:   return <AchievementsScreen />;
       case GAME_PHASES.SETTINGS:       return <SettingsScreen />;
       case GAME_PHASES.TALENT_TREE:    return <TalentTreeScreen />;
+      case GAME_PHASES.TUTORIAL:       return <TutorialScreen />;
+      case GAME_PHASES.LEADERBOARD:    return <(require('./screens/LeaderboardScreen').default) />;
       default:                         return <MenuScreen />;
     }
   };

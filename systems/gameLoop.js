@@ -1,3 +1,95 @@
+// Boss L'Architecte — crée des murs d'énergie et invoque des Spectres Zigzag
+function bossAI_architect(enemy, player, dt, projs, particles, s) {
+  // Se déplace lentement vers le centre de l'arène
+  const centerX = ARENA_WIDTH / 2;
+  const centerY = ARENA_HEIGHT / 2;
+  const dx = centerX - enemy.x;
+  const dy = centerY - enemy.y;
+  const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+  const spd = enemy.speed * SPEED_SCALE * dt * 0.7; // encore plus lent
+  const nx = enemy.x + (dx / dist) * spd;
+  const ny = enemy.y + (dy / dist) * spd;
+
+  // Timers patterns
+  let patternTimer = (enemy.patternTimer || 0) + dt;
+  let wallList = enemy.wallList || [];
+  let summonTimer = (enemy.summonTimer || 0) + dt;
+  let phase = enemy.patternPhase || 0;
+
+  // Toutes les 4s : crée un mur d'énergie
+  if (patternTimer >= 4) {
+    patternTimer = 0;
+    phase++;
+    // Direction aléatoire
+    const angle = Math.random() * Math.PI * 2;
+    wallList = wallList.concat({
+      id: makeId(),
+      x: nx,
+      y: ny,
+      angle,
+      life: 2.2, // durée d'affichage
+      maxLife: 2.2,
+      length: 900, // traverse toute l'arène
+      color: '#66CCFF',
+    });
+    // Ajoute une particule visuelle pour le mur
+    particles.push({
+      id: makeId(),
+      x: nx,
+      y: ny,
+      type: 'energy_wall',
+      angle,
+      life: 2.2,
+      maxLife: 2.2,
+      color: '#66CCFF',
+      length: 900,
+    });
+  }
+
+  // Met à jour la vie des murs
+  wallList = wallList.filter(w => w.life > 0).map(w => ({ ...w, life: w.life - dt }));
+
+  // Collision mur-joueur
+  for (const wall of wallList) {
+    // Calcul distance point-segment (mur infini)
+    const px = player.x - wall.x;
+    const py = player.y - wall.y;
+    const d = Math.abs(Math.sin(wall.angle) * px - Math.cos(wall.angle) * py);
+    if (d < PLAYER_RADIUS + 10 && wall.life > 0) {
+      // Dégâts si collision
+      s = damagePlayer(s, enemy.damage * 0.7, true);
+    }
+  }
+
+  // Toutes les 6s : invoque 2 Spectres Zigzag
+  if (summonTimer >= 6) {
+    summonTimer = 0;
+    for (let i = 0; i < 2; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const r = 80 + Math.random() * 60;
+      const scaling = getEnemyScaling(s.elapsedTime);
+      const spectre = spawnEnemy(ENEMY_TYPES.SPECTRE_ZIGZAG, scaling);
+      if (spectre) {
+        spectre.x = nx + Math.cos(angle) * r;
+        spectre.y = ny + Math.sin(angle) * r;
+        s.enemies.push(spectre);
+      }
+    }
+  }
+
+  return {
+    ...enemy,
+    x: nx,
+    y: ny,
+    patternTimer,
+    wallList,
+    summonTimer,
+    patternPhase: phase,
+  };
+}
+        case 'boss_architect':
+          enemy = bossAI_architect(enemy, player, dt, newEnemyProjs, newParticles, s);
+          break;
 /**
  * BREACH — Game Loop temps réel
  * Gère : déplacements, IA ennemis, projectiles, collisions, XP, upgrades triggers
@@ -10,13 +102,12 @@ import { ENEMY_INFO, CLASS_INFO, ARENA_WIDTH, ARENA_HEIGHT,
          XP_ATTRACT_SPEED, INVINCIBLE_DURATION } from '../constants';
 import { getActiveWaveConfig, getEnemyScaling, getBossAtTime } from './waveSystem';
 import { getAttackFn, getAttackCooldown, fireShooterProjectile } from './attackSystem';
-import { computePlayerStats, hasUpgrade } from './upgradeSystem';
+import { hasUpgrade } from './upgradeSystem';
 import { makeId } from '../utils/makeId';
 
 // ─── Factory ──────────────────────────────────────────────────────────────────
 
 export function createInitialState(shape, startingStats) {
-  const info = CLASS_INFO[shape];
   return {
     player: {
       x: ARENA_WIDTH  / 2,
@@ -38,12 +129,14 @@ export function createInitialState(shape, startingStats) {
     enemyProjectiles:  [],
     xpOrbs:    [],
     particles: [],
+    turrets:   [], // tourelles actives (Ingénieur)
     // Timers
     attackTimer:     0,         // temps avant la prochaine attaque
     ambushTimer:     0,         // timer pour l'embuscade de l'Ombre
     ambushReady:     true,
     regenAccum:      0,         // accumulation de regen
     shieldCooldown:  0,         // timer du bouclier périodique
+    turretPlaceTimer: 0,        // timer pour la pose de tourelle
     // Vagues
     waveTimers:     {},         // { 'chaser_0': secondsUntilNextSpawn }
     spawnedBosses:  new Set(),
@@ -63,6 +156,56 @@ export function createInitialState(shape, startingStats) {
     attackBoostTimer: 0,        // boost d'attaque après kill (chain_reaction)
     attackBoostMult:  1,
   };
+  // ── Ingénieur : gestion des tourelles ───────────────────────────────
+  if (s.player.shape === 'engineer') {
+    const info = CLASS_INFO.engineer;
+    s.turretPlaceTimer = (s.turretPlaceTimer || 0) + dt;
+    // Pose une tourelle si timer OK et pas trop de tourelles
+    if (s.turretPlaceTimer >= info.attackCooldown && (s.turrets?.length || 0) < info.turretCount) {
+      s.turretPlaceTimer = 0;
+      s.turrets = [
+        ...(s.turrets || []),
+        {
+          id: makeId(),
+          x: s.player.x,
+          y: s.player.y,
+          life: info.turretLifetime,
+          cooldown: 0,
+        },
+      ];
+    }
+    // Met à jour les tourelles (durée de vie, tirs)
+    s.turrets = (s.turrets || []).map(turret => {
+      let t = { ...turret };
+      t.life -= dt;
+      t.cooldown = Math.max(0, (t.cooldown || 0) - dt);
+      // Cherche une cible dans la portée
+      const target = s.enemies.find(e => {
+        const dx = e.x - t.x;
+        const dy = e.y - t.y;
+        return Math.sqrt(dx * dx + dy * dy) < info.turretRange;
+      });
+      if (target && t.cooldown <= 0) {
+        // Tire un projectile
+        const dx = target.x - t.x;
+        const dy = target.y - t.y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        s.playerProjectiles.push({
+          id: makeId(),
+          x: t.x,
+          y: t.y,
+          vx: (dx / dist) * 7,
+          vy: (dy / dist) * 7,
+          damage: info.turretAttack,
+          radius: 7,
+          color: '#7EC8E3',
+          fromTurret: true,
+        });
+        t.cooldown = info.turretCooldown;
+      }
+      return t;
+    }).filter(t => t.life > 0);
+  }
 }
 
 // ─── Boucle principale ────────────────────────────────────────────────────────
@@ -126,6 +269,35 @@ export function updateGame(state, dt, input) {
     }
   }
 
+  // Barrière Adaptative : bouclier temporaire après dégâts
+  if (!s.adaptiveShieldCooldown) s.adaptiveShieldCooldown = 0;
+  if (!s.adaptiveShieldTimer) s.adaptiveShieldTimer = 0;
+  if (!s.player.adaptiveShield) s.player.adaptiveShield = 0;
+  // Si le joueur a l'upgrade et n'a pas de bouclier actif
+  if (hasUpgrade(s.activeUpgrades, 'barriere')) {
+    // Si le joueur a perdu des PV ce frame (hors dégâts de corruption)
+    if (s._lastHp !== undefined && s.player.hp < s._lastHp && s._lastHp - s.player.hp < 50) {
+      if (s.adaptiveShieldCooldown <= 0) {
+        const barriere = s.activeUpgrades.find(u => u.id === 'barriere');
+        s.player = { ...s.player, adaptiveShield: barriere.effect.value || 10 };
+        s.adaptiveShieldTimer = barriere.effect.duration || 3;
+        s.adaptiveShieldCooldown = barriere.effect.cooldown || 20;
+      }
+    }
+    // Timer du bouclier
+    if (s.player.adaptiveShield > 0) {
+      s.adaptiveShieldTimer -= dt;
+      if (s.adaptiveShieldTimer <= 0) {
+        s.player = { ...s.player, adaptiveShield: 0 };
+      }
+    }
+    // Cooldown
+    if (s.adaptiveShieldCooldown > 0) {
+      s.adaptiveShieldCooldown -= dt;
+    }
+  }
+  s._lastHp = s.player.hp;
+
   // Corruption (malédiction)
   const corruption = s.activeUpgrades.filter(u => u.id === 'corruption').length;
   if (corruption > 0) {
@@ -181,7 +353,31 @@ export function updateGame(state, dt, input) {
 
   // ── Collecte XP ──────────────────────────────────────────────────────────
   const prevLevel = s.level;
+  const prevHp = s.player.hp;
   s = collectXP(s, dt);
+  // Symbiose : soin à chaque orbe d'XP ramassé
+  if (hasUpgrade(s.activeUpgrades, 'symbiose')) {
+    const symbiose = s.activeUpgrades.find(u => u.id === 'symbiose');
+    // Si le joueur a gagné de l'XP ce frame (orbes ramassés)
+    if (s.player.hp < s.player.maxHp && s.xp > state.xp) {
+      // Soigne 2 PV par orbe ramassé (approximation : 1 orbe = 1 gain d'XP)
+      const heal = (s.xp - state.xp) * (symbiose.effect.value || 2);
+      s.player = { ...s.player, hp: Math.min(s.player.hp + heal, s.player.maxHp) };
+    }
+  }
+  // Effet visuel de level-up : halo expansif
+  if (s.level > prevLevel) {
+    s.particles.push({
+      id: makeId(),
+      x: s.player.x,
+      y: s.player.y,
+      type: 'ring',
+      color: '#FFD700',
+      life: 0.7,
+      maxLife: 0.7,
+      maxRadius: 120,
+    });
+  }
   // Prémonition : appliquer slow à tous les ennemis lors d'un level-up
   if (hasUpgrade(s.activeUpgrades, 'premonition') && s.level > prevLevel) {
     const premonition = s.activeUpgrades.find(u => u.id === 'premonition');
@@ -303,7 +499,26 @@ function updateEnemies(s, dt) {
           enemy.burnTimer -= dt;
           enemy.hp -= enemy.burnDamage * dt;
         }
-        return enemy.hp <= 0 ? null : enemy;
+        if (enemy.hp <= 0) {
+          // Animation de mort : explosion de particules
+          for (let i = 0; i < 10; i++) {
+            const angle = (i / 10) * Math.PI * 2 + Math.random() * 0.2;
+            const speed = 60 + Math.random() * 40;
+            newParticles.push({
+              id: makeId(),
+              x: enemy.x,
+              y: enemy.y,
+              vx: Math.cos(angle) * speed,
+              vy: Math.sin(angle) * speed,
+              radius: 6 + Math.random() * 4,
+              color: enemy.color,
+              life: 0.45 + Math.random() * 0.18,
+              maxLife: 0.6,
+            });
+          }
+          return null;
+        }
+        return enemy;
       }
       // Slow (ralentissement Oracle ou Prémonition)
       if (enemy.slowTimer > 0) {
@@ -326,10 +541,77 @@ function updateEnemies(s, dt) {
       if (enemy.burnTimer > 0) {
         enemy.burnTimer -= dt;
         enemy.hp -= enemy.burnDamage * dt;
-        if (enemy.hp <= 0) return null;
+        if (enemy.hp <= 0) {
+          // Animation de mort : explosion de particules
+          for (let i = 0; i < 10; i++) {
+            const angle = (i / 10) * Math.PI * 2 + Math.random() * 0.2;
+            const speed = 60 + Math.random() * 40;
+            newParticles.push({
+              id: makeId(),
+              x: enemy.x,
+              y: enemy.y,
+              vx: Math.cos(angle) * speed,
+              vy: Math.sin(angle) * speed,
+              radius: 6 + Math.random() * 4,
+              color: enemy.color,
+              life: 0.45 + Math.random() * 0.18,
+              maxLife: 0.6,
+            });
+          }
+          return null;
+        }
       }
 
       switch (enemy.behavior) {
+                case 'zigzag':
+                  enemy = zigzagAI(enemy, player, dt);
+                  break;
+        // ─── IA Spectre Zigzag ─────────────────────────────────────────────────────
+        function zigzagAI(enemy, player, dt) {
+          // Init timers si absents
+          let zigzagTimer = (enemy.zigzagTimer || 0) + dt;
+          let zigzagDir = enemy.zigzagDir || 0; // -1 = gauche, 1 = droite, 0 = tout droit
+          const interval = ENEMY_INFO.spectre_zigzag.zigzagInterval || 1.5;
+          const dist = ENEMY_INFO.spectre_zigzag.zigzagDistance || 60;
+
+          // Changement de direction toutes les X secondes
+          if (zigzagTimer >= interval) {
+            zigzagTimer = 0;
+            // Choix aléatoire gauche/droite
+            zigzagDir = Math.random() < 0.5 ? -1 : 1;
+          }
+
+          // Calcul direction vers joueur
+          const dx = player.x - enemy.x;
+          const dy = player.y - enemy.y;
+          const len = Math.sqrt(dx * dx + dy * dy) || 1;
+          // Direction principale
+          let dirX = dx / len;
+          let dirY = dy / len;
+          // Ajout du zigzag perpendiculaire
+          if (zigzagDir !== 0) {
+            // Perpendiculaire à la trajectoire
+            const perpX = -dirY;
+            const perpY = dirX;
+            dirX += perpX * 0.7 * zigzagDir;
+            dirY += perpY * 0.7 * zigzagDir;
+            // Normaliser
+            const l2 = Math.sqrt(dirX * dirX + dirY * dirY) || 1;
+            dirX /= l2;
+            dirY /= l2;
+          }
+          // Avancer
+          const spd = enemy.speed * SPEED_SCALE * dt;
+          const nx = enemy.x + dirX * spd;
+          const ny = enemy.y + dirY * spd;
+          return {
+            ...enemy,
+            x: nx,
+            y: ny,
+            zigzagTimer,
+            zigzagDir,
+          };
+        }
         case 'chase':
           enemy = chasePlayer(enemy, player, dt);
           break;
@@ -349,12 +631,6 @@ function updateEnemies(s, dt) {
           break;
         }
         case 'boss_spiral':
-        case 'boss_void':
-          enemy = bossAI_void(enemy, player, dt, newEnemyProjs);
-          break;
-        case 'boss_spiral':
-          enemy = bossAI_void(enemy, player, dt, newEnemyProjs);
-          break;
         case 'boss_void':
           enemy = bossAI_void(enemy, player, dt, newEnemyProjs);
           break;
@@ -608,7 +884,7 @@ function bossAI_mirror(enemy, player, dt, projs) {
   if (patternTimer >= 1.5) {
     const dx = player.x - e.x;
     const dy = player.y - e.y;
-    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+    // const dist = Math.sqrt(dx * dx + dy * dy) || 1; // supprimé car inutilisé
     // 3 projectiles en léger éventail
     for (let spread = -1; spread <= 1; spread++) {
       const angle = Math.atan2(dy, dx) + spread * 0.2;
