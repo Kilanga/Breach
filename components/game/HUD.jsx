@@ -4,6 +4,7 @@
  */
 
 import React, { memo, useRef, useEffect } from 'react';
+import * as Haptics from 'expo-haptics';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import { PALETTE, CLASS_INFO, GAME_MODE, VICTORY_TIME } from '../../constants';
 import { xpForLevel } from '../../systems/gameLoop';
@@ -21,9 +22,26 @@ function endlessBonusMult(elapsedTime) {
 
 const HUD = memo(({ player, level, xp, elapsedTime, kills, score, bossActive,
                     ambushReady, ambushTimer, gameMode }) => {
+
   const hpPct  = Math.max(0, Math.min(1, player.hp / player.maxHp));
   const xpNeeded = xpForLevel(level);
   const xpPct  = Math.min(1, xp / xpNeeded);
+
+  // Haptics: level-up & damage
+  const prevLevel = useRef(level);
+  const prevHp = useRef(player.hp);
+  useEffect(() => {
+    if (level > prevLevel.current) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+    prevLevel.current = level;
+  }, [level]);
+  useEffect(() => {
+    if (player.hp < prevHp.current) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    }
+    prevHp.current = player.hp;
+  }, [player.hp]);
 
   // Animations fluides pour les barres
   const hpAnim = useRef(new Animated.Value(hpPct)).current;
@@ -52,9 +70,29 @@ const HUD = memo(({ player, level, xp, elapsedTime, kills, score, bossActive,
   const endlessBonus = isEndless ? endlessBonusMult(elapsedTime) : 0;
   const endlessMultStr = endlessBonus > 0 ? `×${(1 + endlessBonus).toFixed(2)}` : null;
 
+  // Flash visuel lors du level-up ou dégâts
+  const flashAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (level > prevLevel.current || player.hp < prevHp.current) {
+      flashAnim.setValue(1);
+      Animated.timing(flashAnim, {
+        toValue: 0,
+        duration: 350,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [level, player.hp]);
+
   return (
     <View style={styles.container} pointerEvents="none">
+      {/* Flash visuel lors d'un événement */}
+      <Animated.View pointerEvents="none" style={[styles.flash, { opacity: flashAnim }]} />
       {/* Header : timer + score */}
+        flash: {
+          ...StyleSheet.absoluteFillObject,
+          backgroundColor: 'rgba(255,255,255,0.25)',
+          zIndex: 99,
+        },
       <View style={styles.header}>
         <View style={styles.timerBox}>
           <Text style={styles.timerLabel}>⏱</Text>
