@@ -1,55 +1,116 @@
 /**
  * BREACH — TalentTreeScreen
- * Arbre de talents persistant (méta-progression)
  */
 
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
+import { View, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import useGameStore from '../store/gameStore';
 import { PALETTE, PERMANENT_UPGRADES_CATALOG } from '../constants';
 import { Card, Title, Body, Button } from '../components/ui';
 import { useT } from '../utils/i18n';
 
-const { width: W } = Dimensions.get('window');
-
 export default function TalentTreeScreen() {
-  const goToMenu           = useGameStore(s => s.goToMenu);
-  const meta               = useGameStore(s => s.meta);
+  const goToMenu             = useGameStore(s => s.goToMenu);
+  const meta                 = useGameStore(s => s.meta);
+  const buyPermanentUpgrade  = useGameStore(s => s.buyPermanentUpgrade);
   const t = useT();
 
-  const unlockedIds = meta.permanentUpgrades || [];
+  const unlockedIds   = meta.permanentUpgrades || [];
+  const talentPoints  = meta.talentPoints || 0;
+
+  const purchasable = PERMANENT_UPGRADES_CATALOG.filter(i => i.cost);
+  const achievementBased = PERMANENT_UPGRADES_CATALOG.filter(i => !i.cost);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: PALETTE.bg }}>
       <Card style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
         <Button label={t('back_menu') || '← Menu'} onPress={goToMenu} style={{ minWidth: 80, paddingVertical: 8 }} />
-        <Title style={{ fontSize: 18 }}>{t('talenttree_title') || 'Améliorations Permanentes'}</Title>
+        <Title style={{ fontSize: 18 }}>{t('talenttree_title') || 'Talents Permanents'}</Title>
         <View style={{ width: 60 }} />
       </Card>
-      <Card style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(255,136,68,0.1)', borderRadius: 10, marginBottom: 4 }}>
+
+      {/* Points de talent */}
+      <Card style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(255,204,68,0.1)', borderRadius: 10, marginBottom: 4 }}>
         <Body style={{ fontSize: 20 }}>🔸</Body>
-        <Body style={{ flex: 1, fontSize: 14, color: PALETTE.gold }}>{t('talenttree_fragments') || 'Fragments du Rift'}</Body>
-        <Title style={{ fontSize: 22, color: PALETTE.gold }}>{meta.talentPoints || 0}</Title>
+        <Body style={{ flex: 1, fontSize: 14, color: PALETTE.gold }}>Points de talent</Body>
+        <Title style={{ fontSize: 24, color: PALETTE.gold }}>{talentPoints}</Title>
       </Card>
       <Body style={{ fontSize: 11, color: PALETTE.textDim, marginHorizontal: 8, marginBottom: 12, lineHeight: 16 }}>
-        {t('talenttree_hint') || 'Les fragments sont gagnés automatiquement en fin de run (1 toutes les 10s + 1/kill, divisé par 5 pour les points de talent).'}
+        Gagnés en fin de run · 1 pt = 5 fragments (survie + kills)
       </Body>
+
       <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
-        {PERMANENT_UPGRADES_CATALOG.map(item => {
-          const isUnlocked = unlockedIds.includes(item.id);
-          const condMet = isConditionMet(item.unlockCondition, meta);
+
+        {/* Achetables avec des points */}
+        <Body style={{ fontSize: 11, color: PALETTE.textDim, letterSpacing: 1.2, marginBottom: 4 }}>— ACHETABLES —</Body>
+        {purchasable.map(item => {
+          const owned    = unlockedIds.includes(item.id);
+          const canAfford = talentPoints >= item.cost;
           return (
-            <Card key={item.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, borderColor: isUnlocked ? '#44FF8840' : PALETTE.border, backgroundColor: isUnlocked ? 'rgba(68,255,136,0.04)' : PALETTE.bgCard, opacity: !condMet && !isUnlocked ? 0.5 : 1, padding: 14 }}>
-              <Body style={{ fontSize: 26, width: 34, textAlign: 'center' }}>{isUnlocked ? item.icon : condMet ? item.icon : '🔒'}</Body>
+            <Card key={item.id} style={{
+              flexDirection: 'row', alignItems: 'center', gap: 12,
+              borderColor: owned ? '#44FF8840' : canAfford ? '#FFCC4460' : PALETTE.border,
+              backgroundColor: owned ? 'rgba(68,255,136,0.04)' : PALETTE.bgCard,
+              padding: 14,
+            }}>
+              <Body style={{ fontSize: 26, width: 34, textAlign: 'center' }}>{item.icon}</Body>
               <View style={{ flex: 1 }}>
-                <Title style={{ fontSize: 14, color: !condMet && !isUnlocked ? PALETTE.textDim : PALETTE.textPrimary }}>{isUnlocked || condMet ? item.name : '???'}</Title>
-                <Body style={{ fontSize: 12, color: PALETTE.textDim, marginTop: 2 }}>{isUnlocked || condMet ? item.desc : item.unlockCondition?.desc || 'Inconnu'}</Body>
+                <Title style={{ fontSize: 14 }}>{item.name}</Title>
+                <Body style={{ fontSize: 12, color: PALETTE.textDim, marginTop: 2 }}>{item.desc}</Body>
               </View>
-              {isUnlocked
-                ? <Body style={{ color: '#44FF88', fontSize: 18, fontWeight: 'bold' }}>✓</Body>
-                : condMet ? <Body style={{ color: '#FFCC44', fontSize: 11, fontWeight: 'bold' }}>{t('talenttree_available') || 'Débloqué!'}</Body>
-                : <Body style={{ color: PALETTE.textDim, fontSize: 11 }}>{t('talenttree_locked') || 'Verrouillé'}</Body>
+              {owned
+                ? <Body style={{ color: '#44FF88', fontSize: 20, fontWeight: 'bold' }}>✓</Body>
+                : (
+                  <TouchableOpacity
+                    onPress={() => buyPermanentUpgrade(item.id)}
+                    disabled={!canAfford}
+                    style={{
+                      backgroundColor: canAfford ? '#FFCC44' : '#333',
+                      borderRadius: 8,
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                      opacity: canAfford ? 1 : 0.5,
+                    }}
+                  >
+                    <Body style={{ fontSize: 12, fontWeight: 'bold', color: canAfford ? '#111' : PALETTE.textDim }}>
+                      🔸 {item.cost}
+                    </Body>
+                  </TouchableOpacity>
+                )
+              }
+            </Card>
+          );
+        })}
+
+        {/* Débloqués par achievements */}
+        <Body style={{ fontSize: 11, color: PALETTE.textDim, letterSpacing: 1.2, marginTop: 8, marginBottom: 4 }}>— RÉCOMPENSES —</Body>
+        {achievementBased.map(item => {
+          const owned    = unlockedIds.includes(item.id);
+          const condMet  = isConditionMet(item.unlockCondition, meta);
+          const visible  = owned || condMet;
+          return (
+            <Card key={item.id} style={{
+              flexDirection: 'row', alignItems: 'center', gap: 12,
+              borderColor: owned ? '#44FF8840' : PALETTE.border,
+              backgroundColor: owned ? 'rgba(68,255,136,0.04)' : PALETTE.bgCard,
+              opacity: !visible ? 0.45 : 1,
+              padding: 14,
+            }}>
+              <Body style={{ fontSize: 26, width: 34, textAlign: 'center' }}>{visible ? item.icon : '🔒'}</Body>
+              <View style={{ flex: 1 }}>
+                <Title style={{ fontSize: 14, color: visible ? PALETTE.textPrimary : PALETTE.textDim }}>
+                  {visible ? item.name : '???'}
+                </Title>
+                <Body style={{ fontSize: 12, color: PALETTE.textDim, marginTop: 2 }}>
+                  {visible ? item.desc : item.unlockCondition?.desc || '???'}
+                </Body>
+              </View>
+              {owned
+                ? <Body style={{ color: '#44FF88', fontSize: 20, fontWeight: 'bold' }}>✓</Body>
+                : condMet
+                  ? <Body style={{ color: '#FFCC44', fontSize: 11, fontWeight: 'bold' }}>Débloqué !</Body>
+                  : <Body style={{ fontSize: 11, color: PALETTE.textDim }}>Verrouillé</Body>
               }
             </Card>
           );

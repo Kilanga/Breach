@@ -5,31 +5,38 @@
  * Les particules de type 'ring' sont dessinées comme des anneaux d'expansion (fracture, shockwave, explosif)
  */
 
-import React, { memo } from 'react';
+import React, { memo, useRef, useEffect, useState } from 'react';
 import Svg, { Circle, Polygon, Rect, G, Line, Text as SvgText } from 'react-native-svg';
 import { PALETTE, CLASS_INFO, PLAYER_RADIUS } from '../../constants';
 
-const ArenaRenderer = memo(({ gameState, arenaWidth, arenaHeight, scaleX, scaleY, palette = PALETTE, highlightPlayer = false }) => {
+// Ajout du zoom et du centrage sur le joueur
+const ArenaRenderer = memo(({ gameState, arenaWidth, arenaHeight, scaleX, scaleY, palette = PALETTE, highlightPlayer = false, zoom = 1.0, centerOnPlayer = false, obstacles = [] }) => {
   if (!gameState) return null;
-    const { player, enemies, playerProjectiles, enemyProjectiles,
-      xpOrbs, particles, turrets = [], activeUpgrades = [], chainBoostActive = false } = gameState;
+  const { player, enemies, playerProjectiles, enemyProjectiles,
+    xpOrbs, particles, turrets = [], activeUpgrades = [], chainBoostActive = false } = gameState;
   // Couleur et rayon des tourelles (Ingénieur)
   const turretColor = '#7EC8E3';
   const turretRadius = 13;
-      {/* ─── Tourelles de l'Ingénieur ─────────────────────────────── */}
-      {turrets.map(turret => (
-        <G key={turret.id}>
-          <Circle cx={turret.x} cy={turret.y} r={turretRadius} fill={turretColor} opacity={0.85} />
-          {/* Indicateur de durée de vie */}
-          <Circle cx={turret.x} cy={turret.y} r={turretRadius + 4} fill="none" stroke={turretColor} strokeWidth={2} opacity={0.35}
-            strokeDasharray={`${Math.max(0.01, (turret.life / (CLASS_INFO.engineer.turretLifetime || 1)) * 2 * Math.PI * (turretRadius + 4))},100`} />
-        </G>
-      ))}
 
   const sx = scaleX || 1;
   const sy = scaleY || 1;
   const vw = arenaWidth  * sx;
   const vh = arenaHeight * sy;
+
+  // Calcul du viewport centré sur le joueur
+  let viewBox = `0 0 ${arenaWidth} ${arenaHeight}`;
+  if (centerOnPlayer && gameState && gameState.player) {
+    const player = gameState.player;
+    const zoomFactor = zoom || 1.2;
+    const vwz = arenaWidth / zoomFactor;
+    const vhz = arenaHeight / zoomFactor;
+    let cx = player.x - vwz / 2;
+    let cy = player.y - vhz / 2;
+    // Clamp pour ne pas sortir de l'arène
+    cx = Math.max(0, Math.min(cx, arenaWidth - vwz));
+    cy = Math.max(0, Math.min(cy, arenaHeight - vhz));
+    viewBox = `${cx} ${cy} ${vwz} ${vhz}`;
+  }
 
   // Flags visuels dérivés des upgrades actifs
   const hasMagnet     = activeUpgrades.some(u => u.id === 'magnet');
@@ -37,6 +44,12 @@ const ArenaRenderer = memo(({ gameState, arenaWidth, arenaHeight, scaleX, scaleY
   const hasRegen      = activeUpgrades.some(u => u.id === 'regen');
   const hasBerserker  = activeUpgrades.some(u => u.id === 'berserker');
   const berserkerActive = hasBerserker && player.hp / player.maxHp < 0.3;
+
+  // Halos évolutifs par couleur d'upgrade
+  const greenUpgrades = activeUpgrades.filter(u => u.color === 'green').length;
+  const redUpgrades   = activeUpgrades.filter(u => u.color === 'red').length;
+  const blueUpgrades  = activeUpgrades.filter(u => u.color === 'blue').length;
+  const curseUpgrades = activeUpgrades.filter(u => u.color === 'curse').length;
 
   // Rayon de collecte XP (avec magnet)
   const magnetStacks = activeUpgrades.filter(u => u.id === 'magnet').length;
@@ -51,12 +64,42 @@ const ArenaRenderer = memo(({ gameState, arenaWidth, arenaHeight, scaleX, scaleY
   // Séparer les ring particles des particules normales
   const ringParticles   = particles.filter(p => p.type === 'ring');
   const normalParticles = particles.filter(p => !p.type);
+  // Particules premium : poussière, éclats, impacts
+  const dustParticles   = particles.filter(p => p.type === 'dust');
+  const sparkParticles  = particles.filter(p => p.type === 'spark');
+  const impactParticles = particles.filter(p => p.type === 'impact');
 
   // Particules murs d'énergie (boss Architecte)
   const energyWalls = particles.filter(p => p.type === 'energy_wall');
 
   return (
-    <Svg width={vw} height={vh} viewBox={`0 0 ${arenaWidth} ${arenaHeight}`}>
+    <Svg width={vw} height={vh} viewBox={viewBox}>
+                  {/* Obstacles fixes */}
+                  {obstacles && obstacles.map(obs => {
+                    if (obs.type === 'circle') {
+                      if (obs.isHazard) {
+                        // Lave : lueur orange + cercle avec motif
+                        return (
+                          <G key={obs.id}>
+                            <Circle cx={obs.x} cy={obs.y} r={obs.radius + 10} fill="#FF6600" opacity={0.18} />
+                            <Circle cx={obs.x} cy={obs.y} r={obs.radius} fill="#AA3300" opacity={0.90} />
+                            <Circle cx={obs.x} cy={obs.y} r={obs.radius * 0.55} fill="#FF5500" opacity={0.60} />
+                            <Circle cx={obs.x} cy={obs.y} r={obs.radius * 0.25} fill="#FFAA00" opacity={0.50} />
+                          </G>
+                        );
+                      }
+                      // Rocher : cercle gris-bleu avec relief
+                      return (
+                        <G key={obs.id}>
+                          <Circle cx={obs.x} cy={obs.y} r={obs.radius} fill="#2A3A4A" opacity={0.95} stroke="#445566" strokeWidth={2} />
+                          <Circle cx={obs.x - obs.radius * 0.2} cy={obs.y - obs.radius * 0.2} r={obs.radius * 0.45} fill="#3A5060" opacity={0.40} />
+                        </G>
+                      );
+                    }
+                    return (
+                      <Rect key={obs.id} x={obs.x} y={obs.y} width={obs.w} height={obs.h} fill={obs.color || '#888'} opacity={0.7} rx={obs.rx || 8} />
+                    );
+                  })}
             {/* ─── Murs d'énergie (boss Architecte) ───────────────────────────── */}
             {energyWalls.map(wall => {
               // Calcule les extrémités du mur
@@ -82,6 +125,18 @@ const ArenaRenderer = memo(({ gameState, arenaWidth, arenaHeight, scaleX, scaleY
       <Rect x={0} y={0} width={arenaWidth} height={arenaHeight} fill={palette.bg} />
       {/* Grille décorative */}
       <GridLines w={arenaWidth} h={arenaHeight} />
+      {/* Bordure de la map */}
+      <Rect x={1} y={1} width={arenaWidth - 2} height={arenaHeight - 2} fill="none" stroke={palette.border || '#2A2A3A'} strokeWidth={3} />
+
+      {/* ─── Tourelles de l'Ingénieur ─────────────────────────────── */}
+      {turrets.map(turret => (
+        <G key={turret.id}>
+          <Circle cx={turret.x} cy={turret.y} r={turretRadius} fill={turretColor} opacity={0.95} stroke="#222" strokeWidth={2} />
+          <Circle cx={turret.x} cy={turret.y} r={turretRadius + 5} fill="none" stroke={turretColor} strokeWidth={2} opacity={0.45}
+            strokeDasharray={`${Math.max(0.01, (turret.life / (CLASS_INFO.engineer.turretLifetime || 1)) * 2 * Math.PI * (turretRadius + 5))},100`} />
+          <SvgText x={turret.x} y={turret.y + 4} fontSize="15" fontWeight="bold" fill="#222" textAnchor="middle">T</SvgText>
+        </G>
+      ))}
 
       {/* ─── Auras joueur (couche basse) ───────────────────────────────────── */}
       {/* Rayon d'attraction XP (aimant) */}
@@ -114,6 +169,47 @@ const ArenaRenderer = memo(({ gameState, arenaWidth, arenaHeight, scaleX, scaleY
         <Circle cx={player.x} cy={player.y} r={PLAYER_RADIUS + 8}
           fill="none" stroke="#FFCC00" strokeWidth={2} opacity={0.75} />
       )}
+
+      {/* Halo vert évolutif selon upgrades vertes */}
+      {greenUpgrades > 0 && (
+        <Circle
+          cx={player.x}
+          cy={player.y}
+          r={PLAYER_RADIUS + 10 + greenUpgrades * 8}
+          fill="#44FF88"
+          opacity={0.18 + 0.07 * greenUpgrades}
+        />
+      )}
+      {/* Halo rouge évolutif selon upgrades rouges */}
+      {redUpgrades > 0 && (
+        <Circle
+          cx={player.x}
+          cy={player.y}
+          r={PLAYER_RADIUS + 10 + redUpgrades * 8}
+          fill="#FF3344"
+          opacity={0.13 + 0.07 * redUpgrades}
+        />
+      )}
+      {/* Halo bleu évolutif selon upgrades bleues */}
+      {blueUpgrades > 0 && (
+        <Circle
+          cx={player.x}
+          cy={player.y}
+          r={PLAYER_RADIUS + 10 + blueUpgrades * 8}
+          fill="#3388FF"
+          opacity={0.13 + 0.07 * blueUpgrades}
+        />
+      )}
+      {/* Aura maudite évolutive */}
+      {curseUpgrades > 0 && (
+        <Circle
+          cx={player.x}
+          cy={player.y}
+          r={PLAYER_RADIUS + 14 + curseUpgrades * 10}
+          fill="#7B2FF2"
+          opacity={0.18 + 0.10 * curseUpgrades}
+        />
+      )}
       {/* Regen : légère aura verte */}
       {hasRegen && (
         <Circle cx={player.x} cy={player.y} r={PLAYER_RADIUS + 4}
@@ -136,6 +232,41 @@ const ArenaRenderer = memo(({ gameState, arenaWidth, arenaHeight, scaleX, scaleY
             opacity={opacity} />
         );
       })}
+
+
+      {/* ─── Particules premium : poussière, éclats, impacts ────────────── */}
+      {dustParticles.map(p => (
+        <Circle
+          key={p.id}
+          cx={p.x}
+          cy={p.y}
+          r={p.radius * (p.life / p.maxLife)}
+          fill={p.color || '#E2C089'}
+          opacity={0.12 * (p.life / p.maxLife)}
+        />
+      ))}
+      {sparkParticles.map(p => (
+        <Line
+          key={p.id}
+          x1={p.x}
+          y1={p.y}
+          x2={p.x + (p.dx || 0) * 6}
+          y2={p.y + (p.dy || 0) * 6}
+          stroke={p.color || '#FFD700'}
+          strokeWidth={1.5}
+          opacity={0.18 + 0.5 * (p.life / p.maxLife)}
+        />
+      ))}
+      {impactParticles.map(p => (
+        <Circle
+          key={p.id}
+          cx={p.x}
+          cy={p.y}
+          r={p.radius * (1 - p.life / p.maxLife)}
+          fill={p.color || '#FFF'}
+          opacity={0.22 * (p.life / p.maxLife)}
+        />
+      ))}
 
       {/* ─── Particules normales ────────────────────────────────────────── */}
       {normalParticles.map(p => (
@@ -228,7 +359,7 @@ function PlayerProjectile({ proj }) {
 
 // ─── Joueur ───────────────────────────────────────────────────────────────────
 
-import { useRef, useEffect } from 'react';
+// import supprimé : déjà présent en haut du fichier
 import { Animated as RNAnimated } from 'react-native';
 
 function PlayerShape({ player, highlight }) {
@@ -324,75 +455,90 @@ function PlayerShape({ player, highlight }) {
 // ─── Ennemis ──────────────────────────────────────────────────────────────────
 
 function EnemyShape({ enemy }) {
-  const { x, y, radius, color, hp, maxHp, isBoss, freezeTimer, burnTimer, stunTimer, type } = enemy;
+  const { x, y, radius, color, hp, maxHp, isBoss,
+          freezeTimer, burnTimer, stunTimer, poisonTimer, hitFlashTimer, type } = enemy;
   const hpPct = Math.max(0, hp / maxHp);
 
-  // Couleur modifiée si statut
-  let overlayColor = null;
-  let statusIcon = null;
-  if (freezeTimer > 0) {
-    overlayColor = '#44CCFF';
-    statusIcon = '❄️';
-  }
-  if (burnTimer > 0) {
-    overlayColor = '#FF6600';
-    statusIcon = '🔥';
-  }
-  if (stunTimer > 0) {
-    overlayColor = '#AAAAAA';
-    statusIcon = '⚡';
-  }
+  // Animation pop à l'apparition
+  const [scale, setScale] = useState(0.3);
+  const animRef = useRef();
+  useEffect(() => {
+    setScale(0.3);
+    animRef.current = setTimeout(() => setScale(1), 16);
+    return () => clearTimeout(animRef.current);
+  }, [enemy.id]);
 
-  // Traînée fantomatique pour le Spectre Zigzag
+  // Priorité des overlays : hit flash > stun > burn > poison > freeze
+  let overlayColor = null;
+  let statusIcon   = null;
+  let overlayOpacity = 0.45;
+
+  if (freezeTimer > 0)  { overlayColor = '#44CCFF'; statusIcon = '❄'; }
+  if (poisonTimer > 0)  { overlayColor = '#88FF44'; statusIcon = '☠'; }
+  if (burnTimer   > 0)  { overlayColor = '#FF6600'; statusIcon = '🔥'; }
+  if (stunTimer   > 0)  { overlayColor = '#DDDDAA'; statusIcon = '⚡'; overlayOpacity = 0.6; }
+  if (hitFlashTimer > 0) { overlayColor = '#FFFFFF'; overlayOpacity = 0.75 * (hitFlashTimer / 0.12); }
+
+  // Traînée pour Spectre Zigzag
   let trail = null;
   if (type === 'spectre_zigzag') {
-    // Simple effet : plusieurs cercles translucides derrière le spectre
-    const trailCount = 4;
-    const trailAlpha = [0.18, 0.12, 0.08, 0.04];
-    const trailDist = 18;
-    trail = [];
-    // Utilise la direction zigzag pour placer la traînée
-    const angle = Math.atan2(enemy.zigzagDir ? -enemy.zigzagDir : 0, 1); // approximation
-    for (let i = 1; i <= trailCount; i++) {
-      trail.push(
-        <Circle
-          key={`trail${i}`}
-          cx={x - i * trailDist * Math.cos(angle)}
-          cy={y - i * trailDist * Math.sin(angle)}
-          r={radius * (1 - i * 0.12)}
-          fill="#66CCFF"
-          opacity={trailAlpha[i - 1]}
-        />
-      );
-    }
+    const trailAlpha = [0.16, 0.10, 0.06, 0.03];
+    trail = trailAlpha.map((a, i) => (
+      <Circle
+        key={`trail${i}`}
+        cx={x - (i + 1) * 14}
+        cy={y}
+        r={radius * (1 - (i + 1) * 0.15)}
+        fill="#66CCFF"
+        opacity={a}
+      />
+    ));
   }
 
   return (
     <G>
       {trail}
-      <Circle cx={x} cy={y} r={radius} fill={color} opacity={0.9} />
-      {overlayColor && <Circle cx={x} cy={y} r={radius} fill={overlayColor} opacity={0.45} />}
-      {/* Icône de statut flottante */}
-      {statusIcon && (
-        <SvgText
-          x={x}
-          y={y - radius - 14}
-          fontSize={radius * 1.2}
-          fontWeight="bold"
-          textAnchor="middle"
-          alignmentBaseline="middle"
-          opacity={0.95}
-        >
-          {statusIcon}
-        </SvgText>
-      )}
-      {/* HP bar */}
-      <Rect x={x - radius} y={y - radius - 8} width={radius * 2} height={3} rx={1.5} fill="rgba(255,255,255,0.15)" />
-      <Rect x={x - radius} y={y - radius - 8} width={radius * 2 * hpPct} height={3} rx={1.5} fill={hpPct > 0.5 ? '#44FF88' : '#FF4444'} />
-      {/* Badge boss */}
-      {isBoss && (
-        <Circle cx={x} cy={y} r={radius + 5} fill="none" stroke="#BB44FF" strokeWidth={2} strokeDasharray="8,4" />
-      )}
+      <G transform={`translate(${x}, ${y}) scale(${scale}) translate(${-x}, ${-y})`}>
+        {/* Corps */}
+        <Circle cx={x} cy={y} r={radius} fill={color} opacity={0.92} />
+        {/* Overlay statut / hit flash */}
+        {overlayColor && (
+          <Circle cx={x} cy={y} r={radius} fill={overlayColor} opacity={overlayOpacity} />
+        )}
+        {/* Aura boss */}
+        {isBoss && (
+          <>
+            <Circle cx={x} cy={y} r={radius + 8}  fill="none" stroke="#BB44FF" strokeWidth={2} strokeDasharray="10,5" opacity={0.7} />
+            <Circle cx={x} cy={y} r={radius + 14} fill="none" stroke="#BB44FF" strokeWidth={1} opacity={0.25} />
+          </>
+        )}
+        {/* HP bar */}
+        <Rect x={x - radius} y={y - radius - 9} width={radius * 2} height={isBoss ? 5 : 3} rx={1.5} fill="rgba(0,0,0,0.4)" />
+        <Rect
+          x={x - radius} y={y - radius - 9}
+          width={radius * 2 * hpPct} height={isBoss ? 5 : 3} rx={1.5}
+          fill={isBoss ? '#BB44FF' : hpPct > 0.5 ? '#44FF88' : hpPct > 0.25 ? '#FFCC44' : '#FF4444'}
+        />
+        {/* Icône de statut */}
+        {statusIcon && !hitFlashTimer && (
+          <SvgText
+            x={x + radius + 6} y={y + 4}
+            fontSize={radius * 0.9} textAnchor="start" opacity={0.9}
+          >
+            {statusIcon}
+          </SvgText>
+        )}
+        {/* Nom du boss */}
+        {isBoss && enemy.name && (
+          <SvgText
+            x={x} y={y - radius - 14}
+            fontSize={10} fontWeight="bold" fill="#DDBBFF"
+            textAnchor="middle" opacity={0.9}
+          >
+            {enemy.name}
+          </SvgText>
+        )}
+      </G>
     </G>
   );
 }

@@ -7,6 +7,7 @@ import { computePlayerStats } from '../../systems/upgradeSystem';
 import { CLASS_INFO } from '../../constants';
 import { trackEvent } from '../../utils/telemetry';
 import { submitScore } from '../../services/leaderboardApi';
+import { addLocalScore } from '../../services/localLeaderboard';
 
 export const INITIAL_META = {
   permanentUpgrades:  [],
@@ -28,11 +29,16 @@ export const INITIAL_META = {
     hexagon:  { runs: 0, bestTime: 0, wins: 0, kills: 0 },
     shadow:   { runs: 0, bestTime: 0, wins: 0, kills: 0 },
     paladin:  { runs: 0, bestTime: 0, wins: 0, kills: 0 },
+    octagon:  { runs: 0, bestTime: 0, wins: 0, kills: 0 },
+    engineer: { runs: 0, bestTime: 0, wins: 0, kills: 0 },
   },
   musicEnabled:      true,
   sfxEnabled:        true,
   musicVolume:       0.5,
   sfxVolume:         0.7,
+  largeText:         false,
+  colorBlindMode:    false,
+  language:          'fr',
 };
 
 export function createMetaSlice(set, get) {
@@ -81,16 +87,19 @@ export function createMetaSlice(set, get) {
       const unlocked = checkUnlocks(newMeta, meta.permanentUpgrades);
       newMeta.permanentUpgrades = unlocked;
 
-      // Fragments gagnés
-      const fragmentsEarned = Math.floor(survivalTime / 10) + kills;
+      // Fragments gagnés (perm_fragmaster : +1 fragment par run)
+      const extraFragment = newMeta.permanentUpgrades.includes('perm_fragmaster') ? 1 : 0;
+      const fragmentsEarned = Math.floor(survivalTime / 10) + kills + extraFragment;
       newMeta.talentPoints = (newMeta.talentPoints || 0) + Math.floor(fragmentsEarned / 5);
 
       set({ meta: newMeta });
-      // Soumission automatique du score au leaderboard
+      const playerName = meta.playerName || 'Anonyme';
+      // Sauvegarde locale (toujours)
+      await addLocalScore({ playerName, score: score || 0, survivalTime, kills, shape });
+      // Soumission réseau (best-effort)
       try {
-        const playerName = meta.playerName || 'Anonyme';
         await submitScore({ playerName, score: score || 0, survivalTime, kills, shape });
-      } catch (e) {
+      } catch {
         // Ignore erreur réseau
       }
       return { isWin, fragmentsEarned };
@@ -107,6 +116,23 @@ export function createMetaSlice(set, get) {
           ...meta,
           purchasedClasses: [...meta.purchasedClasses, shape],
           talentPoints: (meta.talentPoints || 0) - cost,
+        },
+      });
+      return true;
+    },
+
+    // ── Achats upgrades permanents ──────────────────────────────────────────
+    buyPermanentUpgrade: (id) => {
+      const meta = get().meta;
+      if (meta.permanentUpgrades.includes(id)) return false;
+      const cat = PERMANENT_UPGRADES_CATALOG.find(u => u.id === id);
+      if (!cat || !cat.cost) return false;
+      if ((meta.talentPoints || 0) < cat.cost) return false;
+      set({
+        meta: {
+          ...meta,
+          permanentUpgrades: [...meta.permanentUpgrades, id],
+          talentPoints: (meta.talentPoints || 0) - cat.cost,
         },
       });
       return true;
@@ -156,6 +182,7 @@ function checkUnlocks(meta, currentUnlocked) {
   const unlocked = [...currentUnlocked];
   for (const cat of PERMANENT_UPGRADES_CATALOG) {
     if (unlocked.includes(cat.id)) continue;
+    if (cat.cost) continue; // Purchasable items must be bought manually
     if (!cat.unlockCondition) {
       unlocked.push(cat.id);
       continue;

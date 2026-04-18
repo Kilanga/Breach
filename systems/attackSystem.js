@@ -186,7 +186,8 @@ function computeAttackDamage(baseAttack, upgrades) {
   if (critUpgrades.length > 0) {
     const critChance = critUpgrades.length * 0.15;
     if (Math.random() < critChance) {
-      dmg   *= 3;
+      const critMult = upgrades.some(u => u.id === 'oeil_acere') ? 4 : 3;
+      dmg   *= critMult;
       isCrit = true;
     }
   }
@@ -206,17 +207,44 @@ function visualFlags(upgrades, isCrit, isAmbush = false) {
 }
 
 /**
+ * Ingénieur — tir de drone court vers l'ennemi le plus proche (complète les tourelles)
+ */
+export function fireEngineer(player, enemies, upgrades) {
+  const nearest = vecToNearest(player, enemies);
+  if (!nearest) return [];
+  const { dx, dy, dist } = nearest;
+  const nx = dx / dist;
+  const ny = dy / dist;
+  const { dmg, isCrit } = computeAttackDamage(player.attack, upgrades);
+  const vf = visualFlags(upgrades, isCrit);
+  return [{
+    id: makeId(),
+    x: player.x, y: player.y,
+    vx: nx * 6, vy: ny * 6,
+    damage: Math.round(dmg * 0.7), // dégâts réduits, compensés par les tourelles
+    radius: 5,
+    piercing: false,
+    piercedIds: [],
+    color: '#7EC8E3',
+    owner: 'player',
+    lifeMs: 1800,
+    ...vf,
+  }];
+}
+
+/**
  * Retourne la fonction d'attaque pour une classe donnée
  */
 export function getAttackFn(shape) {
   switch (shape) {
-    case 'triangle': return fireAssassin;
-    case 'circle':   return fireArcaniste;
-    case 'hexagon':  return fireColosse;
-    case 'shadow':   return fireOmbre;
-    case 'paladin':  return firePaladin;
-    case 'octagon':  return fireOracle;
-    default:         return fireAssassin;
+    case 'triangle':  return fireAssassin;
+    case 'circle':    return fireArcaniste;
+    case 'hexagon':   return fireColosse;
+    case 'shadow':    return fireOmbre;
+    case 'paladin':   return firePaladin;
+    case 'octagon':   return fireOracle;
+    case 'engineer':  return fireEngineer;
+    default:          return fireAssassin;
   }
 }
 

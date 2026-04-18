@@ -13,18 +13,18 @@ import { useT } from '../utils/i18n';
 const { width: W } = Dimensions.get('window');
 
 const ACHIEVEMENTS = [
-  { id: 'first_run',  title: 'Première Brèche',   desc: 'Terminer un premier run.',        icon: '⚡', check: m => m.totalRuns >= 1 },
-  { id: 'survivor',   title: '2 minutes',          desc: 'Survivre 2 minutes.',             icon: '⏱', check: m => m.bestSurvivalTime >= 120 },
-  { id: 'slayer',     title: 'Massacreur',         desc: 'Tuer 100 ennemis au total.',      icon: '⚔', check: m => m.totalKills >= 100 },
-  { id: 'winner',     title: 'Survivant',          desc: 'Survivre 5 minutes entières.',    icon: '🏆', check: m => m.totalWins >= 1 },
-  { id: 'veteran',    title: 'Vétéran',            desc: '10 runs joués.',                  icon: '🔥', check: m => m.totalRuns >= 10 },
-  { id: 'assassin_w', title: 'Maîtrise Assassin',  desc: 'Gagner avec l\'Assassin.',        icon: '🗡', check: m => m.shapeStats?.triangle?.wins >= 1 },
-  { id: 'arcanist_w', title: 'Maîtrise Arcaniste', desc: 'Gagner avec l\'Arcaniste.',       icon: '🔮', check: m => m.shapeStats?.circle?.wins >= 1 },
-  { id: 'colossus_w', title: 'Maîtrise Colosse',   desc: 'Gagner avec le Colosse.',         icon: '🏰', check: m => m.shapeStats?.hexagon?.wins >= 1 },
-  { id: 'all_classes',title: 'Touche à tout',      desc: 'Jouer avec les 5 classes.',       icon: '🌟', check: m => Object.values(m.shapeStats || {}).every(s => s.runs >= 1) },
-  { id: 'speedrun',   title: 'Speedrunner',        desc: '5 min sans mourir.',              icon: '💨', check: m => m.totalWins >= 1 },
-  { id: 'masochist',  title: 'Masochiste',         desc: 'Prendre une malédiction.',        icon: '☠',  check: m => m.totalRuns >= 5 },
-  { id: 'legendary',  title: 'Légende',            desc: 'Gagner 3 fois.',                  icon: '👑', check: m => m.totalWins >= 3 },
+  { id: 'first_run',  icon: '⚡', check: m => m.totalRuns >= 1 },
+  { id: 'survivor',   icon: '⏱', check: m => m.bestSurvivalTime >= 120 },
+  { id: 'slayer',     icon: '⚔', check: m => m.totalKills >= 100 },
+  { id: 'winner',     icon: '🏆', check: m => m.totalWins >= 1 },
+  { id: 'veteran',    icon: '🔥', check: m => m.totalRuns >= 10 },
+  { id: 'assassin_w', icon: '🗡', check: m => m.shapeStats?.triangle?.wins >= 1 },
+  { id: 'arcanist_w', icon: '🔮', check: m => m.shapeStats?.circle?.wins >= 1 },
+  { id: 'colossus_w', icon: '🏰', check: m => m.shapeStats?.hexagon?.wins >= 1 },
+  { id: 'all_classes',icon: '🌟', check: m => Object.values(m.shapeStats || {}).every(s => s.runs >= 1) },
+  { id: 'speedrun',   icon: '💨', check: m => m.totalWins >= 1 },
+  { id: 'masochist',  icon: '☠',  check: m => m.totalRuns >= 5 },
+  { id: 'legendary',  icon: '👑', check: m => m.totalWins >= 3 },
 ];
 
 export default function AchievementsScreen() {
@@ -55,8 +55,8 @@ function AchRow({ a, done, t }) {
     <Card style={{ flexDirection: 'row', alignItems: 'center', gap: 12, borderColor: done ? '#FFCC4440' : PALETTE.border, backgroundColor: done ? 'rgba(255,204,68,0.05)' : PALETTE.bgCard, padding: 14 }}>
       <Body style={{ fontSize: 28, width: 36, textAlign: 'center' }}>{done ? a.icon : '🔒'}</Body>
       <View style={{ flex: 1 }}>
-        <Title style={{ fontSize: 14, color: done ? PALETTE.textPrimary : PALETTE.textDim }}>{done ? a.title : '???'}</Title>
-        <Body style={{ fontSize: 12, color: PALETTE.textDim }}>{a.desc}</Body>
+        <Title style={{ fontSize: 14, color: done ? PALETTE.textPrimary : PALETTE.textDim }}>{done ? t(`achievement_${a.id}_title`) : '???'}</Title>
+        <Body style={{ fontSize: 12, color: PALETTE.textDim }}>{t(`achievement_${a.id}_desc`)}</Body>
       </View>
       {done && <Body style={{ color: '#FFCC44', fontSize: 18, fontWeight: 'bold' }}>✓</Body>}
     </Card>

@@ -1,43 +1,27 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
-import { PALETTE } from '../constants';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { PALETTE, TUTORIAL_STEPS } from '../constants';
+import { useT } from '../utils/i18n';
 
 const TUTORIAL_STEPS = [
-  {
-    title: 'Bienvenue dans BREACH!',
-    desc: 'Survis le plus longtemps possible dans l’arène. Déplace-toi, évite les ennemis et collecte l’XP pour devenir plus fort.'
-  },
-  {
-    title: 'Déplacement',
-    desc: 'Utilise le joystick virtuel pour déplacer ton personnage dans l’arène.'
-  },
-  {
-    title: 'Attaque automatique',
-    desc: 'Ton personnage attaque automatiquement les ennemis proches. Améliore tes stats et choisis des upgrades pour survivre.'
-  },
-  {
-    title: 'Upgrades',
-    desc: 'À chaque level-up, choisis une amélioration parmi 3 options. Combine les synergies de couleur pour des bonus puissants.'
-  },
-  {
-    title: 'Boss & Vagues',
-    desc: 'Des boss apparaissent régulièrement. Prépare-toi à leurs patterns uniques et reste mobile!'
-  },
-  {
-    title: 'Bonne chance!',
-    desc: 'Découvre toutes les classes, upgrades et secrets du Breach. À toi de jouer!'
-  }
+  { title: 'Step 1', desc: 'Description for step 1', icon: '🔹' },
+  { title: 'Step 2', desc: 'Description for step 2', icon: '🔸' },
+  { title: 'Step 3', desc: 'Description for step 3', icon: '🔹' },
+  { title: 'Step 4', desc: 'Description for step 4', icon: '🔸' },
+  { title: 'Step 5', desc: 'Description for step 5', icon: '🔹' },
+  { title: 'Step 6', desc: 'Description for step 6', icon: '🔸' },
 ];
 
 export default function TutorialScreen({ navigation }) {
   const [step, setStep] = useState(0);
-  const current = TUTORIAL_STEPS[step];
+  const stepData = TUTORIAL_STEPS[step];
 
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll}>
-        <Text style={styles.title}>{current.title}</Text>
-        <Text style={styles.desc}>{current.desc}</Text>
+        <Text style={{fontSize:48, textAlign:'center'}}>{stepData.icon}</Text>
+        <Text style={styles.title}>{stepData.title}</Text>
+        <Text style={styles.desc}>{stepData.desc}</Text>
       </ScrollView>
       <View style={styles.footer}>
         {step > 0 && (

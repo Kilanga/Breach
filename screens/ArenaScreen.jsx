@@ -1,13 +1,17 @@
+import RelicNotification from '../components/game/RelicNotification';
 /**
  * BREACH — ArenaScreen
  * Écran de jeu principal : game loop temps réel
  */
 
-import React, { useRef, useCallback, useEffect, useState } from 'react';
+import { useRef, useCallback, useEffect, useState } from 'react';
+import { Animated } from 'react-native';
 import { View, Text, StyleSheet, Dimensions, AppState, TouchableOpacity } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import useGameStore from '../store/gameStore';
 import { PALETTE, PALETTE_DALTONISM, ARENA_WIDTH, ARENA_HEIGHT, VICTORY_TIME, GAME_MODE } from '../constants';
+import MutationBar from '../components/MutationBar';
 import { createInitialState, updateGame } from '../systems/gameLoop';
 import { getUpgradeChoices, applySynergies, computePlayerStats } from '../systems/upgradeSystem';
 import ArenaRenderer from '../components/game/ArenaRenderer';
@@ -15,9 +19,10 @@ import HUD from '../components/game/HUD';
 import VirtualJoystick from '../components/game/VirtualJoystick';
 import UpgradeChoiceScreen from './UpgradeChoiceScreen';
 import TutorialOverlay from '../components/game/TutorialOverlay';
-import { Card, Title, Button } from '../components/ui';
-import { useT } from '../utils/i18n';
+import { Card, Title, Body, Button } from '../components/ui';
+import { ScrollView } from 'react-native';
 import { trackEvent } from '../utils/telemetry';
+import BossBar from '../components/game/BossBar';
 // Debug FPS HUD (dev only)
 function DebugFPSHUD() {
   const [fps, setFps] = useState(0);
@@ -57,9 +62,13 @@ const SCALE_X = ARENA_DISPLAY_W / ARENA_WIDTH;
 const SCALE_Y = ARENA_DISPLAY_H / ARENA_HEIGHT;
 
 export default function ArenaScreen() {
-    // Highlight temporaire du joueur (level-up, heal)
-    const [highlightPlayer, setHighlightPlayer] = useState(false);
-  const t = useT();
+    // Notification de relique
+    const [relicNotif, setRelicNotif] = useState(null);
+  const insets = useSafeAreaInsets();
+  // Highlight temporaire du joueur (level-up, heal)
+  const [highlightPlayer, setHighlightPlayer] = useState(false);
+  // Animation de secousse de l'arène
+  const shakeAnim = useRef(new Animated.Value(0)).current;
   const selectedShape    = useGameStore(s => s.selectedShape);
   const gameMode         = useGameStore(s => s.gameMode);
   const getStartingStats = useGameStore(s => s.getStartingStats);
@@ -68,8 +77,9 @@ export default function ArenaScreen() {
   const goToMenu         = useGameStore(s => s.goToMenu);
   const goToShapeSelect  = useGameStore(s => s.goToShapeSelect);
   const endRun           = useGameStore(s => s.endRun);
-  const totalRuns        = useGameStore(s => s.meta.totalRuns);
-  const sfxEnabled       = useGameStore(s => s.meta.sfxEnabled);
+  const totalRuns          = useGameStore(s => s.meta.totalRuns);
+  const permanentUpgrades  = useGameStore(s => s.meta.permanentUpgrades || []);
+  const sfxEnabled         = useGameStore(s => s.meta.sfxEnabled);
   const fontScale        = useGameStore(s => s.meta.largeText ? 1.35 : 1);
   const colorBlind       = useGameStore(s => s.meta.colorBlindMode);
   const palette          = colorBlind ? PALETTE_DALTONISM : PALETTE;
@@ -79,11 +89,20 @@ export default function ArenaScreen() {
   // État UI (déclenche les re-renders)
   const [uiState, setUiState] = useState(null);
 
+  // Déclencheur pour highlight temporaire du joueur
+  useEffect(() => {
+    if (highlightPlayer) {
+      const to = setTimeout(() => setHighlightPlayer(false), 700);
+      return () => clearTimeout(to);
+    }
+  }, [highlightPlayer]);
+
   // showUpgrade via ref pour ne pas recréer tick à chaque fois
   const showUpgradeRef = useRef(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [upgradeChoices, setUpgradeChoices] = useState([]);
   const [showPauseMenu, setShowPauseMenu] = useState(false);
+  const [confirmQuit, setConfirmQuit] = useState(null); // null | 'restart' | 'menu'
 
   // sfxEnabled en ref pour lecture dans tick sans dépendance
   const sfxEnabledRef = useRef(sfxEnabled !== false);
@@ -102,7 +121,7 @@ export default function ArenaScreen() {
   // Initialisation
   useEffect(() => {
     const stats = getStartingStats(selectedShape);
-    gameStateRef.current = createInitialState(selectedShape, stats);
+    gameStateRef.current = createInitialState(selectedShape, stats, permanentUpgrades);
     setUiState(extractUiState(gameStateRef.current));
     trackEvent('run_started', { shape: selectedShape, mode: gameMode });
     return () => {
@@ -113,12 +132,21 @@ export default function ArenaScreen() {
   // Game loop — tick sans dépendance à showUpgrade (lecture via ref)
   const tick = useCallback((timestamp) => {
     if (!gameStateRef.current) return;
+    const s = gameStateRef.current;
+    if (!s || !s.player) return;
+    // Synchronise paused avec showPauseMenu
+    if (showPauseMenu && !gameStateRef.current.paused) {
+      gameStateRef.current = { ...gameStateRef.current, paused: true };
+    }
+    if (!showPauseMenu && gameStateRef.current.paused) {
+      gameStateRef.current = { ...gameStateRef.current, paused: false };
+    }
     if (lastTimeRef.current === null) lastTimeRef.current = timestamp;
     const dtMs = Math.min(timestamp - lastTimeRef.current, 50); // cap à 50ms
     lastTimeRef.current = timestamp;
     const dt = dtMs / 1000;
 
-    const s = gameStateRef.current;
+    // ...existing code...
     if (!s.alive) return;
 
     // Si un level-up est déjà en attente, ouvrir l'overlay immédiatement.
@@ -126,7 +154,6 @@ export default function ArenaScreen() {
       if (!showUpgradeRef.current) {
         const choices = getUpgradeChoices(s.activeUpgrades, 3);
         if (!choices || choices.length === 0) {
-          // Cas limite: plus aucun upgrade possible, afficher un fallback explicite.
           setUpgradeChoices([]);
           showUpgradeRef.current = true;
           setShowUpgrade(true);
@@ -154,12 +181,28 @@ export default function ArenaScreen() {
     const prevLevel = s.level;
     const prevBossKills = s.bossKills || 0;
 
+    const prevRelics = (s.activeRelics || []).map(r => r.id);
     const newState = updateGame(s, dt, inputRef.current);
+    // Détection d'une nouvelle relique obtenue
+    const newRelic = (newState.activeRelics || []).find(r => !prevRelics.includes(r.id));
+    if (newRelic) {
+      setRelicNotif(newRelic);
+      if (sfxEnabledRef.current) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    }
     gameStateRef.current = newState;
 
     // Highlight sur level-up ou heal
     if (newState.level > prevLevel || newState.player.hp > prevHp) {
       setHighlightPlayer(true);
+    }
+
+    // Animation de secousse si dégâts reçus
+    if (newState.player.hp < prevHp) {
+      Animated.sequence([
+        Animated.timing(shakeAnim, { toValue: 1, duration: 40, useNativeDriver: true }),
+        Animated.timing(shakeAnim, { toValue: -1, duration: 40, useNativeDriver: true }),
+        Animated.timing(shakeAnim, { toValue: 0, duration: 40, useNativeDriver: true }),
+      ]).start();
     }
 
     // Retours haptiques
@@ -173,13 +216,6 @@ export default function ArenaScreen() {
 
     // UI update
     setUiState(extractUiState(newState));
-    // Reset du highlight après 700ms
-    useEffect(() => {
-      if (highlightPlayer) {
-        const to = setTimeout(() => setHighlightPlayer(false), 700);
-        return () => clearTimeout(to);
-      }
-    }, [highlightPlayer]);
 
     if (newState.level > prevLevel) {
       trackEvent('level_gained', {
@@ -279,7 +315,7 @@ export default function ArenaScreen() {
     }
 
     rafRef.current = requestAnimationFrame(tick);
-  }, []); // aucune dépendance — lecture via refs
+  }, [showPauseMenu]); // dépendance sur showPauseMenu pour synchronisation
 
   // Démarrer la loop quand le composant est monté
   useEffect(() => {
@@ -342,7 +378,10 @@ export default function ArenaScreen() {
     };
     showUpgradeRef.current = false;
     setShowUpgrade(false);
+    setUpgradeChoices([]);
     lastTimeRef.current = null;
+    // Annule et relance la boucle
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(tick);
   }, [tick]);
 
@@ -358,6 +397,8 @@ export default function ArenaScreen() {
     setShowUpgrade(false);
     setUpgradeChoices([]);
     lastTimeRef.current = null;
+    // Annule et relance la boucle
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(tick);
   }, [tick]);
 
@@ -375,7 +416,8 @@ export default function ArenaScreen() {
     gameStateRef.current = { ...s, paused: false };
     setShowPauseMenu(false);
     lastTimeRef.current = null;
-    rafRef.current = requestAnimationFrame(tick);
+    // Toujours relancer la boucle
+    if (!rafRef.current) rafRef.current = requestAnimationFrame(tick);
     trackEvent('pause_menu_closed', { elapsedTime: s.elapsedTime, level: s.level });
   }, [tick]);
 
@@ -407,10 +449,27 @@ export default function ArenaScreen() {
 
   if (!uiState) return <View style={styles.root} />;
 
+  // Shake effect: translation X/Y pseudo-aléatoire
+  const shake = shakeAnim.interpolate({
+    inputRange: [-1, 0, 1],
+    outputRange: [-8, 0, 8],
+  });
+
   return (
-    <View style={styles.root}>
-      {/* Arena */}
-      <View style={styles.arenaContainer}>
+    <View style={[styles.root, { paddingTop: insets.top }]}> 
+      {/* MutationBar: affiche les mutations actives de la run */}
+      {gameStateRef.current?.activeMutations && gameStateRef.current.activeMutations.length > 0 && (
+        <View style={{ position: 'absolute', top: 8, left: 0, right: 0, zIndex: 20, alignItems: 'center' }} pointerEvents="none">
+          <MutationBar mutations={gameStateRef.current.activeMutations} />
+        </View>
+      )}
+      {/* BossBar affichée si boss actif */}
+      {uiState.bossActive && uiState.bossEnemy && <BossBar boss={uiState.bossEnemy} />}
+      {/* Arena avec shake, respecte la safe zone en haut */}
+      <Animated.View style={[styles.arenaContainer, { transform: [
+        { translateX: shake },
+        { translateY: shakeAnim.interpolate({ inputRange: [-1, 0, 1], outputRange: [6, 0, -6] }) },
+      ] }] }>
         <ArenaRenderer
           gameState={uiState.renderState}
           arenaWidth={ARENA_WIDTH}
@@ -418,11 +477,31 @@ export default function ArenaScreen() {
           scaleX={SCALE_X}
           scaleY={SCALE_Y}
           palette={palette}
-          highlightPlayer={highlightPlayer}
+          highlightPlayer={highlightPlayer || showTutorial}
+          zoom={1.25}
+          centerOnPlayer={true}
+          obstacles={uiState.obstacles || []}
         />
-      </View>
+        {/* Surbrillance joueur pendant le tutoriel */}
+        {showTutorial && (
+          <View pointerEvents="none" style={{
+            position: 'absolute',
+            left: '50%',
+            top: '50%',
+            width: 80,
+            height: 80,
+            marginLeft: -40,
+            marginTop: -40,
+            borderRadius: 40,
+            borderWidth: 3,
+            borderColor: '#00E0FF',
+            opacity: 0.5,
+            zIndex: 10,
+          }} />
+        )}
+      </Animated.View>
 
-      {/* HUD */}
+      {/* HUD + Notification relique */}
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
         {typeof __DEV__ !== 'undefined' && __DEV__ && <DebugFPSHUD />}
         <HUD
@@ -433,12 +512,20 @@ export default function ArenaScreen() {
           kills={uiState.kills}
           score={uiState.score}
           bossActive={uiState.bossActive}
+          bossEnemy={uiState.bossEnemy}
           ambushReady={uiState.ambushReady}
           ambushTimer={uiState.ambushTimer}
+          surgeCounter={uiState.surgeCounter}
           gameMode={gameMode}
           fontScale={fontScale}
           palette={palette}
+          activeUpgrades={gameStateRef.current?.activeUpgrades || []}
+          activeRelics={gameStateRef.current?.activeRelics || []}
+          weeklyEvent={gameStateRef.current?.weeklyEvent}
         />
+        {relicNotif && (
+          <RelicNotification relic={relicNotif} onHide={() => setRelicNotif(null)} />
+        )}
       </View>
 
       {/* Tutorial premier run */}
@@ -455,7 +542,13 @@ export default function ArenaScreen() {
 
       {/* Joystick */}
       <View style={styles.joystickContainer} pointerEvents="box-none">
-        <VirtualJoystick onDirectionChange={handleDirectionChange} />
+        <View style={showTutorial ? styles.joystickHighlight : null}>
+          <VirtualJoystick onDirectionChange={handleDirectionChange} />
+        </View>
+        {/* Surbrillance joystick pendant le tutoriel */}
+        {showTutorial && (
+          <View pointerEvents="none" style={styles.joystickGlow} />
+        )}
       </View>
 
       {/* Upgrade choice overlay */}
@@ -475,12 +568,83 @@ export default function ArenaScreen() {
       {/* Pause overlay */}
       {showPauseMenu && !showUpgrade && (
         <View style={styles.pauseOverlay}>
-          <Card style={{ alignItems: 'center', width: 300, gap: 14, padding: 24 }}>
-            <Title style={{ fontSize: 24, color: palette.textPrimary, marginBottom: 8 }}>{t('pause_title') || 'PAUSE'}</Title>
-            <Button label={t('pause_resume') || 'Reprendre'} primary onPress={resumeRun} style={{ marginBottom: 8 }} />
-            <Button label={t('pause_restart') || 'Recommencer'} onPress={restartRun} style={{ marginBottom: 8 }} />
-            <Button label={t('pause_quit') || 'Quitter vers menu'} onPress={quitToMenu} style={{ backgroundColor: '#2A1A1A', borderColor: '#FF4455' }} />
-          </Card>
+          {confirmQuit ? (
+            <Card style={{ alignItems: 'center', width: 300, gap: 12, padding: 24 }}>
+              <Title style={{ fontSize: 18, color: '#FF4455', textAlign: 'center' }}>
+                {confirmQuit === 'restart' ? 'Recommencer la run ?' : 'Quitter vers le menu ?'}
+              </Title>
+              <Body style={{ fontSize: 12, color: PALETTE.textDim, textAlign: 'center' }}>
+                Ta progression de cette run sera perdue.
+              </Body>
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+                <Button label="Annuler" onPress={() => setConfirmQuit(null)} style={{ flex: 1 }} />
+                <Button
+                  label="Confirmer"
+                  primary
+                  onPress={confirmQuit === 'restart' ? restartRun : quitToMenu}
+                  style={{ flex: 1, backgroundColor: '#FF4455', borderColor: '#FF4455' }}
+                />
+              </View>
+            </Card>
+          ) : (
+            <Card style={{ width: 320, padding: 20, gap: 0 }}>
+              <Title style={{ fontSize: 22, textAlign: 'center', marginBottom: 14 }}>⏸ PAUSE</Title>
+
+              {/* Stats en temps réel */}
+              {uiState && (
+                <View style={{ backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: 10, marginBottom: 12 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <Body style={{ fontSize: 11, color: PALETTE.textDim }}>Temps</Body>
+                    <Body style={{ fontSize: 11, color: PALETTE.textPrimary, fontWeight: 'bold' }}>
+                      {Math.floor((uiState.elapsedTime || 0) / 60)}:{String(Math.floor((uiState.elapsedTime || 0) % 60)).padStart(2, '0')}
+                    </Body>
+                  </View>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <Body style={{ fontSize: 11, color: PALETTE.textDim }}>Niveau</Body>
+                    <Body style={{ fontSize: 11, color: '#FFCC44', fontWeight: 'bold' }}>{uiState.level || 1}</Body>
+                  </View>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <Body style={{ fontSize: 11, color: PALETTE.textDim }}>Kills</Body>
+                    <Body style={{ fontSize: 11, color: PALETTE.textPrimary, fontWeight: 'bold' }}>{uiState.kills || 0}</Body>
+                  </View>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <Body style={{ fontSize: 11, color: PALETTE.textDim }}>Score</Body>
+                    <Body style={{ fontSize: 11, color: '#BB88FF', fontWeight: 'bold' }}>{(uiState.score || 0).toLocaleString()}</Body>
+                  </View>
+                </View>
+              )}
+
+              {/* Upgrades actives */}
+              {uiState?.renderState?.activeUpgrades?.length > 0 && (
+                <View style={{ marginBottom: 12 }}>
+                  <Body style={{ fontSize: 10, color: PALETTE.textDim, letterSpacing: 1, marginBottom: 6 }}>— UPGRADES ACTIVES —</Body>
+                  <ScrollView style={{ maxHeight: 110 }} showsVerticalScrollIndicator={false}>
+                    {Object.entries(
+                      uiState.renderState.activeUpgrades.reduce((acc, u) => {
+                        acc[u.id] = { u, count: (acc[u.id]?.count || 0) + 1 };
+                        return acc;
+                      }, {})
+                    ).map(([id, { u, count }]) => (
+                      <View key={id} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                        <Body style={{ fontSize: 13 }}>{u.icon || '▪'}</Body>
+                        <Body style={{ fontSize: 11, color: PALETTE.textPrimary, flex: 1 }}>{u.name}</Body>
+                        {count > 1 && <Body style={{ fontSize: 10, color: '#FFCC44' }}>×{count}</Body>}
+                      </View>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+
+              {/* Boutons */}
+              <Button label="▶ Reprendre" primary onPress={resumeRun} style={{ marginBottom: 8 }} />
+              <Button label="↺ Recommencer" onPress={() => setConfirmQuit('restart')} style={{ marginBottom: 8 }} />
+              <Button
+                label="← Menu principal"
+                onPress={() => setConfirmQuit('menu')}
+                style={{ backgroundColor: '#1A0A0A', borderColor: '#FF445566' }}
+              />
+            </Card>
+          )}
         </View>
       )}
     </View>
@@ -489,6 +653,7 @@ export default function ArenaScreen() {
 
 // Extrait les données nécessaires au rendu UI depuis le game state
 function extractUiState(s) {
+  if (!s || !s.player) return null;
   return {
     player: {
       x: s.player.x, y: s.player.y,
@@ -499,24 +664,23 @@ function extractUiState(s) {
       attack: s.player.attack,
       defense: s.player.defense,
       speed: s.player.speed,
+      activeRelics: s.activeRelics || [],
     },
     level:       s.level,
     xp:          s.xp,
     elapsedTime: s.elapsedTime,
     kills:       s.kills,
     score:       s.score,
-    bossActive:  s.enemies.some(e => e.isBoss),
+    bossActive:  s.enemies?.some(e => e.isBoss),
+    bossEnemy:   s.enemies?.find(e => e.isBoss) || null,
     ambushReady: s.ambushReady,
     ambushTimer: s.ambushTimer,
+    surgeCounter: s.surgeCounter || 0,
+    enemies:     s.enemies,
+    obstacles:   s.obstacles || [],
     renderState: {
-      player:            s.player,
-      enemies:           s.enemies,
-      playerProjectiles: s.playerProjectiles,
-      enemyProjectiles:  s.enemyProjectiles,
-      xpOrbs:            s.xpOrbs,
-      particles:         s.particles,
-      activeUpgrades:    s.activeUpgrades,    // pour les auras visuelles
-      chainBoostActive:  s.attackBoostTimer > 0, // chain_reaction boost en cours
+      ...s,
+      obstacles: s.obstacles || [],
     },
   };
 }
@@ -538,6 +702,23 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 40,
     left: 30,
+  },
+  joystickHighlight: {
+    borderRadius: 50,
+    borderWidth: 3,
+    borderColor: '#FFD700',
+    padding: 2,
+    backgroundColor: 'rgba(255,255,0,0.08)',
+  },
+  joystickGlow: {
+    position: 'absolute',
+    left: -10,
+    top: -10,
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    backgroundColor: 'rgba(255,215,0,0.18)',
+    zIndex: 5,
   },
   pauseBtn: {
     position: 'absolute',

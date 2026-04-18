@@ -44,6 +44,7 @@ export const WAVE_CONFIGS = [
     groups: [
       { type: ENEMY_TYPES.CHASER,    count: 3, spawnInterval: 1.5 },
       { type: ENEMY_TYPES.SHOOTER,   count: 2, spawnInterval: 3.5 },
+      { type: ENEMY_TYPES.TRACKER,   count: 1, spawnInterval: 5.0 },
       { type: ENEMY_TYPES.EXPLOSIVE, count: 1, spawnInterval: 6.0 },
     ],
   },
@@ -56,6 +57,8 @@ export const WAVE_CONFIGS = [
       { type: ENEMY_TYPES.SHOOTER,   count: 2, spawnInterval: 3.0 },
       { type: ENEMY_TYPES.HEALER,    count: 1, spawnInterval: 7.0 },
       { type: ENEMY_TYPES.EXPLOSIVE, count: 1, spawnInterval: 5.0 },
+      { type: ENEMY_TYPES.VAMPIRE,   count: 1, spawnInterval: 6.0 },
+      { type: ENEMY_TYPES.TRACKER,   count: 1, spawnInterval: 4.5 },
     ],
   },
   // ── Minute 5–6 ────────────────────────────────────────────────────────────
@@ -94,6 +97,8 @@ export const WAVE_CONFIGS = [
       { type: ENEMY_TYPES.EXPLOSIVE, count: 2, spawnInterval: 3.0 },
       { type: ENEMY_TYPES.BLOCKER,   count: 2, spawnInterval: 4.0 },
       { type: ENEMY_TYPES.HEALER,    count: 2, spawnInterval: 5.0 },
+      { type: ENEMY_TYPES.TRACKER,   count: 2, spawnInterval: 3.5 },
+      { type: ENEMY_TYPES.VAMPIRE,   count: 2, spawnInterval: 4.0 },
       { type: ENEMY_TYPES.SPECTRE_ZIGZAG, count: 3, spawnInterval: 3.5 },
     ],
   },
@@ -101,12 +106,13 @@ export const WAVE_CONFIGS = [
 
 // Boss par minute (toutes les 60s)
 export const BOSS_SCHEDULE = [
-  { atSec: 60,  type: ENEMY_TYPES.BOSS_VOID   },
-  { atSec: 120, type: ENEMY_TYPES.BOSS_CINDER },
-  { atSec: 180, type: ENEMY_TYPES.BOSS_MIRROR },
-  { atSec: 240, type: ENEMY_TYPES.BOSS_PULSE  },
-  { atSec: 300, type: ENEMY_TYPES.BOSS_RIFT   },
+  { atSec: 60,  type: ENEMY_TYPES.BOSS_VOID      },
+  { atSec: 120, type: ENEMY_TYPES.BOSS_CINDER    },
+  { atSec: 180, type: ENEMY_TYPES.BOSS_MIRROR    },
+  { atSec: 240, type: ENEMY_TYPES.BOSS_PULSE     },
+  { atSec: 300, type: ENEMY_TYPES.BOSS_RIFT      },
   { atSec: 360, type: ENEMY_TYPES.BOSS_ARCHITECT },
+  { atSec: 420, type: ENEMY_TYPES.BOSS_AMALGAM   },
 ];
 
 /**

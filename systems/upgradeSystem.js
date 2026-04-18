@@ -1,3 +1,4 @@
+// --- Bloc orphelin supprimé : les upgrades sont déjà dans ALL_UPGRADES plus bas ---
 /**
  * BREACH — Système d'upgrades (adapté de RIFT)
  * Conserve les synergies couleur et la pondération par rareté
@@ -6,6 +7,17 @@
 import { UPGRADE_COLORS } from '../constants';
 
 export const ALL_UPGRADES = [
+  // ── Bleu (utilitaire) — Sprint ─────────────────────────────────────────────
+  {
+    id: 'sprint',
+    name: 'Sprint',
+    color: UPGRADE_COLORS.BLUE,
+    rarity: 'rare',
+    maxStack: 2,
+    description: '+18% de vitesse de déplacement par stack.',
+    effect: { type: 'stat', stat: 'speed', value: 0.18 },
+    tags: ['mouvement', 'stat', 'vitesse'],
+  },
 
   // ── Rouge (offensif) ──────────────────────────────────────────────────────
   {
@@ -115,7 +127,7 @@ export const ALL_UPGRADES = [
   {
     id: 'phase_shift', name: 'Déphasage', color: UPGRADE_COLORS.BLUE, rarity: 'rare', maxStack: 1,
     description: '+20% de vitesse de déplacement.',
-    effect: { type: 'stat', stat: 'speed', value: 0.6 },
+    effect: { type: 'stat', stat: 'speed', value: 0.2 },
     tags: ['mouvement', 'défense'],
   },
   {
@@ -205,6 +217,84 @@ export const ALL_UPGRADES = [
     tags: ['survie', 'risque'],
   },
 
+  // ── Rouge (offensif) — nouveaux ──────────────────────────────────────────
+  {
+    id: 'pilleur', name: 'Pilleur', color: UPGRADE_COLORS.RED, rarity: 'common', maxStack: 4,
+    description: '+1.5 ATQ. Simple, efficace.',
+    effect: { type: 'stat', stat: 'attack', value: 1.5 },
+    tags: ['stat', 'dégâts'],
+  },
+  {
+    id: 'vampirisme', name: 'Vampirisme', color: UPGRADE_COLORS.RED, rarity: 'epic', maxStack: 1,
+    description: 'Vole 15% des dégâts infligés en PV.',
+    effect: { type: 'passive', trigger: 'onAttack', action: 'lifesteal', percent: 0.15 },
+    tags: ['dégâts', 'soin'],
+  },
+  {
+    id: 'lame_poison', name: 'Lame Empoisonnée', color: UPGRADE_COLORS.RED, rarity: 'rare', maxStack: 2,
+    description: 'Chaque attaque empoisonne la cible : 2 dégâts/s pendant 3s.',
+    effect: { type: 'passive', trigger: 'onAttack', action: 'applyPoison', value: 2, duration: 3 },
+    tags: ['dégâts', 'statut', 'poison'],
+  },
+  {
+    id: 'oeil_acere', name: 'Œil Acéré', color: UPGRADE_COLORS.RED, rarity: 'rare', maxStack: 1,
+    description: 'Les coups critiques font ×4 dégâts au lieu de ×3.',
+    effect: { type: 'passive', trigger: 'onAttack', action: 'enhancedCrit', multiplier: 4 },
+    tags: ['dégâts', 'critique'],
+  },
+
+  // ── Bleu (utilitaire) — nouveaux ─────────────────────────────────────────
+  {
+    id: 'nimbus', name: 'Nimbus', color: UPGRADE_COLORS.BLUE, rarity: 'common', maxStack: 3,
+    description: '+12% de vitesse de déplacement.',
+    effect: { type: 'stat', stat: 'speed', value: 0.12 },
+    tags: ['mouvement', 'stat'],
+  },
+  {
+    id: 'reflexes', name: 'Réflexes', color: UPGRADE_COLORS.BLUE, rarity: 'rare', maxStack: 2,
+    description: '+0.3s d\'invincibilité après avoir subi des dégâts (cumulable).',
+    effect: { type: 'stat', stat: 'invincibilityBonus', value: 0.3 },
+    tags: ['défense', 'mouvement'],
+  },
+  {
+    id: 'epicentre', name: 'Épicentre', color: UPGRADE_COLORS.BLUE, rarity: 'epic', maxStack: 1,
+    description: 'À chaque kill, crée une zone d\'explosion qui inflige 8 dégâts autour du mort.',
+    effect: { type: 'passive', trigger: 'onKill', action: 'deathExplosion', damage: 8, radius: 60 },
+    tags: ['dégâts', 'aoe', 'kill'],
+  },
+
+  // ── Vert (soin/support) — nouveaux ───────────────────────────────────────
+  {
+    id: 'moisson', name: 'Moisson', color: UPGRADE_COLORS.GREEN, rarity: 'common', maxStack: 3,
+    description: '+25% de rayon de collecte des orbes d\'XP par stack.',
+    effect: { type: 'stat', stat: 'xpPickupRadius', value: 0.25, multiplicative: true },
+    tags: ['utilitaire', 'xp'],
+  },
+  {
+    id: 'testament', name: 'Testament', color: UPGRADE_COLORS.GREEN, rarity: 'rare', maxStack: 2,
+    description: 'Soigne 5 PV à chaque montée de niveau.',
+    effect: { type: 'passive', trigger: 'onLevelUp', action: 'heal', value: 5 },
+    tags: ['soin', 'progression'],
+  },
+  {
+    id: 'determination', name: 'Détermination', color: UPGRADE_COLORS.GREEN, rarity: 'epic', maxStack: 1,
+    description: 'Sous 25% de PV : régénération doublée.',
+    effect: { type: 'passive', trigger: 'periodic', action: 'enhancedRegen', threshold: 0.25 },
+    tags: ['soin', 'survie'],
+  },
+  {
+    id: 'ecorce', name: 'Écorce Vivante', color: UPGRADE_COLORS.GREEN, rarity: 'rare', maxStack: 2,
+    description: '+3 PV max. Soigne 1 PV au début de chaque vague.',
+    effect: { type: 'stat', stat: 'maxHp', value: 3 },
+    tags: ['survie', 'soin'],
+  },
+  {
+    id: 'surge', name: 'Surtension', color: UPGRADE_COLORS.RED, rarity: 'rare', maxStack: 1,
+    description: 'Chaque 5ème attaque consécutive inflige le double de dégâts.',
+    effect: { type: 'passive', trigger: 'onAttack', action: 'surgeAttack', every: 5, multiplier: 2 },
+    tags: ['dégâts', 'rythme'],
+  },
+
   // ── Malédictions ─────────────────────────────────────────────────────────
   {
     id: 'fragilite', name: 'Fragilité', color: UPGRADE_COLORS.CURSE, rarity: 'curse', maxStack: 1,
@@ -239,7 +329,9 @@ export function getUpgradeChoices(activeUpgrades, count = 3) {
     .find(([, value]) => value > 0)?.[0] || null;
 
   const available = ALL_UPGRADES.filter(u => (stackCount[u.id] || 0) < u.maxStack);
-  if (available.length <= count) return [...available];
+  if (available.length <= count) {
+    return [...available];
+  }
 
   const weighted = available.flatMap(u => {
     const rarityWeight = u.rarity === 'common' ? 3
@@ -300,12 +392,20 @@ export function getBuildRecommendation(activeUpgrades) {
   return { color, count, secondCount };
 }
 
+// Effets de synergie évolutifs : chaque palier de 3 upgrades d'une couleur augmente le bonus
 export function applySynergies(upgrades) {
   const colorCount = countByColor(upgrades);
-  const activeColors = Object.entries(colorCount)
-    .filter(([, c]) => c >= 3)
-    .map(([color]) => color);
-  return upgrades.map(u => ({ ...u, synergyActive: activeColors.includes(u.color) }));
+  // Calcul des paliers de synergie (3, 6, 9...)
+  const synergyTiers = {};
+  Object.entries(colorCount).forEach(([color, count]) => {
+    synergyTiers[color] = Math.floor(count / 3);
+  });
+  // Applique la propriété synergyTier à chaque upgrade
+  return upgrades.map(u => ({
+    ...u,
+    synergyActive: synergyTiers[u.color] > 0,
+    synergyTier: synergyTiers[u.color] || 0,
+  }));
 }
 
 /**
@@ -315,6 +415,26 @@ export function applySynergies(upgrades) {
 export function computePlayerStats(basePlayer, activeUpgrades) {
   let stats = { ...basePlayer };
   const curseMult = hasCurseSynergy(activeUpgrades) ? 2 : 1;
+
+  // Calcul des synergies évolutives
+  const colorCount = countByColor(activeUpgrades);
+  const synergyTiers = {};
+  Object.entries(colorCount).forEach(([color, count]) => {
+    synergyTiers[color] = Math.floor(count / 3);
+  });
+
+  // Bonus évolutifs par couleur (exemple : à adapter selon le design)
+  // Rouge : dégâts +10%/palier ; Bleu : défense +8%/palier ; Vert : soin +10%/palier ; Curse : rien
+  if (synergyTiers.red > 0) {
+    stats.attack *= 1 + 0.10 * synergyTiers.red;
+  }
+  if (synergyTiers.blue > 0) {
+    stats.defense *= 1 + 0.08 * synergyTiers.blue;
+  }
+  if (synergyTiers.green > 0) {
+    stats.regen = (stats.regen || 0) * (1 + 0.10 * synergyTiers.green);
+    stats.maxHp *= 1 + 0.05 * synergyTiers.green;
+  }
 
   activeUpgrades.forEach(u => {
     if (u.effect.type === 'stat') {

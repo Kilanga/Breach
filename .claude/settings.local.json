@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx expo *)",
+      "Bash(grep -r \"t\\(\" /c/Users/louis/Downloads/Breach --include=\"*.jsx\" --include=\"*.js\" ! -path \"*/node_modules/*\")",
+      "Bash(grep -rh \"t\\(\" /c/Users/louis/Downloads/Breach --include=\"*.jsx\" --include=\"*.js\" ! -path \"*/node_modules/*\")",
+      "Bash(find /c/Users/louis/Downloads/Breach -type f \\\\\\( -name \"*.jsx\" -o -name \"*.js\" \\\\\\) ! -path \"*/node_modules/*\" -exec grep -h \"t\\(\" {} \\\\;)",
+      "Bash(grep -v '^en$')",
+      "Bash(grep -v '^fr$')"
+    ]
+  }
+}

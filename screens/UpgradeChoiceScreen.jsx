@@ -22,7 +22,7 @@ const UpgradeChoiceScreen = memo(({ choices = [], activeUpgrades, level, onSelec
 
   return (
     <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <Card style={{ width: Math.min(SCREEN_W - 32, 420), maxHeight: '90%', padding: 20 }}>
+      <Card style={{ width: Math.min(SCREEN_W - 32, 420), maxHeight: '90%', padding: 20, minHeight: 300, justifyContent: 'flex-start' }}>
         <Title style={{ fontSize: 24, color: palette.xp, textAlign: 'center', marginBottom: 4, letterSpacing: 2 }}>⬆ {t('upgrade_level') || 'NIVEAU'} {level}</Title>
         <Body style={{ fontSize: 13, color: palette.textDim, textAlign: 'center', marginBottom: 10 }}>{hasChoices ? (t('upgrade_choose') || 'Choisissez un upgrade') : (t('upgrade_none') || 'Aucune amélioration disponible')}</Body>
         {synergies.some(s => s.active) && (
@@ -40,13 +40,14 @@ const UpgradeChoiceScreen = memo(({ choices = [], activeUpgrades, level, onSelec
           </Body>
         )}
         {hasChoices ? (
-          <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ flexGrow: 1, justifyContent: 'flex-start' }} style={{ minHeight: 200 }}>
             {choices.map(upgrade => (
               <UpgradeCard
                 key={upgrade.id}
                 upgrade={upgrade}
                 onSelect={onSelect}
                 synergy={activeUpgrades.filter(u => u.color === upgrade.color).length >= 3 && upgrade.rarity !== 'curse'}
+                currentStacks={activeUpgrades.filter(u => u.id === upgrade.id).length}
                 palette={palette}
               />
             ))}

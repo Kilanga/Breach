@@ -17,7 +17,11 @@ export default {
       bundleIdentifier: 'com.kilanga.breach',
     },
     android: {
-      versionCode: 1, // Incrémente à chaque release Play Store
+      versionCode: 1,
+      statusBar: {
+        translucent: false,
+        backgroundColor: '#0A0A0F',
+      },
       adaptiveIcon: {
         foregroundImage: './assets/adaptive-icon.png',
         backgroundColor: '#0A0A0F',
