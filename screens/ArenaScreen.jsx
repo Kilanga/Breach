@@ -16,6 +16,7 @@ import { createInitialState, updateGame } from '../systems/gameLoop';
 import { getUpgradeChoices, applySynergies, computePlayerStats } from '../systems/upgradeSystem';
 import ArenaRenderer from '../components/game/ArenaRenderer';
 import HUD from '../components/game/HUD';
+import UpgradeTreeOverlay from '../components/game/UpgradeTreeOverlay';
 import VirtualJoystick from '../components/game/VirtualJoystick';
 import UpgradeChoiceScreen from './UpgradeChoiceScreen';
 import TutorialOverlay from '../components/game/TutorialOverlay';
@@ -62,6 +63,8 @@ const SCALE_X = ARENA_DISPLAY_W / ARENA_WIDTH;
 const SCALE_Y = ARENA_DISPLAY_H / ARENA_HEIGHT;
 
 export default function ArenaScreen() {
+      // Overlay arbre d'upgrades
+      const [showUpgradeTree, setShowUpgradeTree] = useState(false);
     // Notification de relique
     const [relicNotif, setRelicNotif] = useState(null);
   const insets = useSafeAreaInsets();
@@ -502,7 +505,7 @@ export default function ArenaScreen() {
       </Animated.View>
 
       {/* HUD + Notification relique */}
-      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
         {typeof __DEV__ !== 'undefined' && __DEV__ && <DebugFPSHUD />}
         <HUD
           player={uiState.player}
@@ -522,9 +525,17 @@ export default function ArenaScreen() {
           activeUpgrades={gameStateRef.current?.activeUpgrades || []}
           activeRelics={gameStateRef.current?.activeRelics || []}
           weeklyEvent={gameStateRef.current?.weeklyEvent}
+          onShowUpgradeTree={() => setShowUpgradeTree(true)}
         />
         {relicNotif && (
           <RelicNotification relic={relicNotif} onHide={() => setRelicNotif(null)} />
+        )}
+        {showUpgradeTree && (
+          <UpgradeTreeOverlay
+            upgrades={gameStateRef.current?.activeUpgrades || []}
+            onClose={() => setShowUpgradeTree(false)}
+            colorBlindMode={colorBlind}
+          />
         )}
       </View>
 

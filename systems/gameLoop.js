@@ -1453,7 +1453,10 @@ function updatePlayerProjectiles(s, dt) {
       });
     }
     // Fracture upgrade + anneau visuel
-    if (hasUpgrade(s.activeUpgrades, 'fracture')) {
+    // Fracture upgrade OU synergie Brûlure+Explosion (ennemi brûlé)
+    const { hasSynergy } = require('./upgradeSystem');
+    const isBurning = dead.status?.burn && dead.status.burn > 0;
+    if (hasUpgrade(s.activeUpgrades, 'fracture') || (hasSynergy(s.activeUpgrades, 'burn_explode') && isBurning)) {
       const fracDmg = dead.maxHp * 0.3;
       newEnemies = newEnemies.map(e => {
         const dx = e.x - dead.x;

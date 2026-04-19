@@ -3,7 +3,7 @@
  * Affiche HP, XP, niveau, timer de survie, score, kills, indicateur d'embuscade
  */
 
-import React, { memo, useRef, useEffect } from 'react';
+import React, { memo, useRef, useEffect, useState } from 'react';
 import * as Haptics from 'expo-haptics';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import { PALETTE, CLASS_INFO, GAME_MODE, VICTORY_TIME } from '../../constants';
@@ -21,21 +21,103 @@ function endlessBonusMult(elapsedTime) {
 }
 
 import { getSynergySummary } from '../../systems/upgradeSystem';
+import QuestBar from './QuestBar';
+import QuestCompleteNotification from './QuestCompleteNotification';
+import QuestHistoryOverlay from './QuestHistoryOverlay';
+import MilestoneNotification from './MilestoneNotification';
+import LoginRewardNotification from './LoginRewardNotification';
+import { QUESTS, getQuestProgress, WEEKLY_CHALLENGES } from '../../systems/questSystem';
+import useGameStore from '../../store/gameStore';
 
 const HUD = memo(({ player, level, xp, elapsedTime, kills, score, bossActive, bossEnemy,
                     ambushReady, ambushTimer, surgeCounter, gameMode, activeUpgrades = [],
                     fontScale = 1, palette = PALETTE, weeklyEvent }) => {
-      // Défi hebdomadaire actif (depuis props)
-      const weekly = weeklyEvent;
+  const [showQuestHistory, setShowQuestHistory] = useState(false);
+  const [milestoneToShow, setMilestoneToShow] = useState(null);
+  const [loginReward, setLoginReward] = useState(null);
+          // Détection de la récompense de connexion au montage
+          useEffect(() => {
+            const reward = useGameStore.getState().checkLoginReward?.();
+            if (reward) setLoginReward(reward);
+          }, []);
+        // Quête terminée notification
+        const meta = useGameStore(s => s.meta);
+        const prevMilestones = useRef(meta.milestones || []);
+        useEffect(() => {
+          // Détection d'un nouveau milestone atteint
+          if (meta.milestones && meta.milestones.length > prevMilestones.current.length) {
+            const newId = meta.milestones.find(id => !prevMilestones.current.includes(id));
+            if (newId) {
+              // Charger la description du milestone
+              import('../../systems/milestoneSystem').then(mod => {
+                const milestone = mod.MILESTONES.find(m => m.id === newId);
+                if (milestone) setMilestoneToShow(milestone);
+              });
+            }
+          }
+          prevMilestones.current = meta.milestones || [];
+        }, [meta.milestones]);
+        const stats = {
+          kills: meta.totalKills,
+          level: meta.runHistory[0]?.level || 1,
+          wins: meta.totalWins,
+        };
+        const [completedQuest, setCompletedQuest] = useState(null);
+        const prevQuestStates = useRef({});
+        useEffect(() => {
+          QUESTS.forEach(q => {
+            const prev = prevQuestStates.current[q.id] || 0;
+            const now = getQuestProgress(q, stats);
+            if (prev < q.goal && now >= q.goal) {
+              setCompletedQuest(q);
+              setTimeout(() => setCompletedQuest(null), 1800);
+            }
+            prevQuestStates.current[q.id] = now;
+          });
+        }, [stats.kills, stats.level, stats.wins]);
+      // Défi hebdomadaire actif (depuis meta)
+      const weeklyChallenge = meta.weeklyChallenge;
+      let weekly = null;
+      if (weeklyChallenge) {
+        weekly = WEEKLY_CHALLENGES.find(c => c.id === weeklyChallenge.id);
+      }
     // Synergies actives (3 upgrades d'une couleur)
+    const [lastSynergyCount, setLastSynergyCount] = useState(0);
+    const [synergyHalo, setSynergyHalo] = useState(false);
+    const synergyAnim = useRef(new Animated.Value(0)).current;
     const synergies = getSynergySummary(activeUpgrades).filter(s => s.active && s.count >= 3);
+    useEffect(() => {
+      if (synergies.length > lastSynergyCount) {
+        setSynergyHalo(true);
+        Animated.sequence([
+          Animated.timing(synergyAnim, { toValue: 1, duration: 350, useNativeDriver: true }),
+          Animated.timing(synergyAnim, { toValue: 0, duration: 350, useNativeDriver: true })
+        ]).start(() => setSynergyHalo(false));
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      setLastSynergyCount(synergies.length);
+    }, [synergies.length]);
   // Grouper les upgrades par id pour compter les stacks
+  const [lastUpgradeCount, setLastUpgradeCount] = useState(0);
+  const [upgradeFlash, setUpgradeFlash] = useState(false);
+  const upgradeAnim = useRef(new Animated.Value(0)).current;
   const upgradeGroups = {};
   activeUpgrades.forEach(u => {
     if (!upgradeGroups[u.id]) upgradeGroups[u.id] = { ...u, count: 1 };
     else upgradeGroups[u.id].count++;
   });
   const upgradesList = Object.values(upgradeGroups);
+  useEffect(() => {
+    if (activeUpgrades.length > lastUpgradeCount) {
+      setUpgradeFlash(true);
+      Animated.sequence([
+        Animated.timing(upgradeAnim, { toValue: 1, duration: 180, useNativeDriver: true }),
+        Animated.timing(upgradeAnim, { toValue: 0, duration: 320, useNativeDriver: true })
+      ]).start(() => setUpgradeFlash(false));
+      Haptics.selectionAsync && Haptics.selectionAsync();
+    }
+    setLastUpgradeCount(activeUpgrades.length);
+  }, [activeUpgrades.length]);
 
   // Reliques actives (depuis player.activeRelics ou props.activeRelics)
   const relicsList = player.activeRelics || [];
@@ -106,15 +188,88 @@ const HUD = memo(({ player, level, xp, elapsedTime, kills, score, bossActive, bo
     }
   }, [level, player.hp]);
 
+  // Badge sélectionné
+
+  // Animation pop du badge sélectionné
+  const [badgeAnim] = useState(() => new Animated.Value(0));
+  const prevBadge = useRef(meta.selectedBadge);
+  let selectedBadge = null;
+  if (meta.selectedBadge) {
+    try {
+      selectedBadge = require('../../systems/badgeSystem').BADGES.find(b => b.id === meta.selectedBadge);
+    } catch {}
+  }
+  useEffect(() => {
+    if (meta.selectedBadge && meta.selectedBadge !== prevBadge.current) {
+      badgeAnim.setValue(0);
+      Animated.sequence([
+        Animated.timing(badgeAnim, { toValue: 1, duration: 120, useNativeDriver: true }),
+        Animated.timing(badgeAnim, { toValue: 0, duration: 320, useNativeDriver: true })
+      ]).start();
+      Haptics.selectionAsync && Haptics.selectionAsync();
+    }
+    prevBadge.current = meta.selectedBadge;
+  }, [meta.selectedBadge]);
+
   return (
-    <View style={styles.container} pointerEvents="none">
+    <View style={styles.container} pointerEvents="box-none">
+      {/* Badge sélectionné */}
+      {selectedBadge && (
+        <Animated.View style={{ position: 'absolute', top: 8, left: 12, zIndex: 40, backgroundColor: 'rgba(255,255,255,0.10)', borderRadius: 16, padding: 4, flexDirection: 'row', alignItems: 'center',
+          transform: [{ scale: badgeAnim.interpolate({ inputRange: [0,1], outputRange: [1, 1.18] }) }],
+          shadowColor: '#FFD700', shadowOpacity: badgeAnim, shadowRadius: badgeAnim.interpolate({ inputRange: [0,1], outputRange: [0, 16] }), shadowOffset: { width: 0, height: 0 },
+        }}>
+          <Text style={{ fontSize: 22, marginRight: 6 }}>{selectedBadge.icon}</Text>
+          <Text style={{ color: '#FFD700', fontWeight: 'bold', fontSize: 14 }}>{selectedBadge.name}</Text>
+        </Animated.View>
+      )}
+      {/* Quêtes journalières/hebdo */}
+      <QuestBar />
+      {/* Défi hebdomadaire */}
+      {weekly && weeklyChallenge && (
+        <View style={styles.weeklyRow}>
+          <Text style={styles.weeklyIcon}>{weekly.icon || '🎯'}</Text>
+          <View style={styles.weeklyTexts}>
+            <Text style={styles.weeklyTitle}>{weekly.desc}</Text>
+            <Text style={styles.weeklyDesc}>
+              Progression : {Math.min(weeklyChallenge.progress, weekly.goal)}/{weekly.goal} {weekly.progressKey === 'kills' ? 'kills' : weekly.progressKey === 'wins' ? 'victoires' : 'upgrades'}
+              {weeklyChallenge.completed && weeklyChallenge.rewardClaimed && ' — Récompense obtenue !'}
+              {weeklyChallenge.completed && !weeklyChallenge.rewardClaimed && ' — Récompense à récupérer !'}
+            </Text>
+          </View>
+        </View>
+      )}
+      {completedQuest && <QuestCompleteNotification quest={completedQuest} onHide={() => setCompletedQuest(null)} />}
+      {milestoneToShow && <MilestoneNotification milestone={milestoneToShow} onHide={() => setMilestoneToShow(null)} />}
+      {loginReward && <LoginRewardNotification reward={loginReward} onHide={() => setLoginReward(null)} />}
+      {/* Bouton arbre d'upgrades */}
+      {typeof onShowUpgradeTree === 'function' && (
+        <View style={styles.treeBtnContainer} pointerEvents="auto">
+          <Text style={styles.treeBtn} onPress={onShowUpgradeTree} accessibilityLabel="Arbre d'upgrades" title="Arbre d'upgrades">🌳</Text>
+        </View>
+      )}
+      {/* Bouton historique des quêtes */}
+      <View style={styles.questHistoryBtnContainer} pointerEvents="auto">
+        <Text style={styles.questHistoryBtn} onPress={() => setShowQuestHistory(true)} accessibilityLabel="Historique des quêtes" title="Historique des quêtes">📜</Text>
+      </View>
+      {showQuestHistory && <QuestHistoryOverlay onClose={() => setShowQuestHistory(false)} />}
       {/* Feedback visuel synergie rare */}
       {synergies.length > 0 && (
         <View style={styles.synergyRow}>
           {synergies.map(s => (
-            <View key={s.color} style={[styles.synergyBadge, { borderColor: s.color === 'red' ? '#FF3344' : s.color === 'blue' ? '#3388FF' : s.color === 'green' ? '#44FF88' : '#7B2FF2', backgroundColor: s.color === 'red' ? '#FF334422' : s.color === 'blue' ? '#3388FF22' : s.color === 'green' ? '#44FF8822' : '#7B2FF222' }] }>
+            <Animated.View key={s.color} style={[
+              styles.synergyBadge,
+              { borderColor: s.color === 'red' ? '#FF3344' : s.color === 'blue' ? '#3388FF' : s.color === 'green' ? '#44FF88' : '#7B2FF2',
+                backgroundColor: s.color === 'red' ? '#FF334422' : s.color === 'blue' ? '#3388FF22' : s.color === 'green' ? '#44FF8822' : '#7B2FF222',
+                shadowColor: '#FFCC44',
+                shadowOpacity: synergyHalo ? synergyAnim : 0,
+                shadowRadius: synergyHalo ? synergyAnim.interpolate({ inputRange: [0,1], outputRange: [0, 16] }) : 0,
+                shadowOffset: { width: 0, height: 0 },
+                transform: synergyHalo ? [{ scale: synergyAnim.interpolate({ inputRange: [0,1], outputRange: [1, 1.15] }) }] : []
+              }
+            ]}>
               <Text style={styles.synergyText}>SYNERGIE {s.color.toUpperCase()} ×{s.count}</Text>
-            </View>
+            </Animated.View>
           ))}
         </View>
       )}
@@ -152,14 +307,20 @@ const HUD = memo(({ player, level, xp, elapsedTime, kills, score, bossActive, bo
 
       {/* Ligne d’icônes d’upgrades actives */}
       {upgradesList.length > 0 && (
-        <View style={styles.upgradesRow}>
+        <Animated.View style={[styles.upgradesRow, upgradeFlash && {
+          shadowColor: '#FFCC44',
+          shadowOpacity: upgradeAnim,
+          shadowRadius: upgradeAnim.interpolate({ inputRange: [0,1], outputRange: [0, 18] }),
+          shadowOffset: { width: 0, height: 0 },
+          transform: [{ scale: upgradeAnim.interpolate({ inputRange: [0,1], outputRange: [1, 1.08] }) }],
+        }] }>
           {upgradesList.map(u => (
             <View key={u.id} style={[styles.upgradeIcon, { borderColor: u.color === 'red' ? '#FF3344' : u.color === 'blue' ? '#3388FF' : u.color === 'green' ? '#44FF88' : '#7B2FF2' }] }>
               <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#fff' }}>{u.icon || u.name[0]}</Text>
               {u.count > 1 && <Text style={styles.upgradeStack}>×{u.count}</Text>}
             </View>
           ))}
-        </View>
+        </Animated.View>
       )}
 
       {/* Ligne d’icônes de reliques collectées */}
@@ -261,6 +422,40 @@ const HUD = memo(({ player, level, xp, elapsedTime, kills, score, bossActive, bo
 });
 
 const styles = StyleSheet.create({
+  treeBtnContainer: {
+    position: 'absolute',
+    top: 8,
+    right: 12,
+    zIndex: 30,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderRadius: 16,
+    padding: 4,
+  },
+  treeBtn: {
+    fontSize: 22,
+    color: '#FFCC44',
+    fontWeight: 'bold',
+    textShadowColor: '#222',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
+  questHistoryBtnContainer: {
+    position: 'absolute',
+    top: 8,
+    right: 52,
+    zIndex: 30,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderRadius: 16,
+    padding: 4,
+  },
+  questHistoryBtn: {
+    fontSize: 22,
+    color: '#FFCC44',
+    fontWeight: 'bold',
+    textShadowColor: '#222',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
   weeklyRow: {
     flexDirection: 'row',
     alignItems: 'center',

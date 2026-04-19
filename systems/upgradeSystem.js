@@ -1,3 +1,35 @@
+// ─── Synergies combinées (ex : Brûlure + Explosion) ─────────────────────────
+/**
+ * Définition des synergies d'upgrades combinées.
+ * Chaque synergie a :
+ * - id : identifiant unique
+ * - upgrades : tableau d'ids d'upgrades nécessaires
+ * - description : effet de la synergie
+ * - apply : fonction (optionnelle) pour appliquer l'effet spécial
+ */
+export const UPGRADE_SYNERGIES = [
+  {
+    id: 'burn_explode',
+    upgrades: ['ignition', 'fracture'],
+    description: 'Les ennemis brûlants explosent à leur mort (30% PV en AoE).',
+    // L'effet sera géré dans le système d'attaque ou de mort d'ennemi
+  },
+  // Ajoutez d'autres synergies ici
+];
+
+/**
+ * Détecte les synergies actives pour une liste d'upgrades.
+ * Retourne un tableau d'objets synergie actifs.
+ */
+export function getActiveSynergies(upgrades) {
+  const ids = upgrades.map(u => u.id);
+  return UPGRADE_SYNERGIES.filter(syn => syn.upgrades.every(req => ids.includes(req)));
+}
+
+// ─── Ajout d'une API pour vérifier une synergie spécifique (ex : burn_explode) ──
+export function hasSynergy(upgrades, synergyId) {
+  return getActiveSynergies(upgrades).some(s => s.id === synergyId);
+}
 // --- Bloc orphelin supprimé : les upgrades sont déjà dans ALL_UPGRADES plus bas ---
 /**
  * BREACH — Système d'upgrades (adapté de RIFT)
@@ -25,6 +57,7 @@ export const ALL_UPGRADES = [
     description: 'Les projectiles infligent 20% de dégâts supplémentaires aux ennemis à plus de 100px.',
     effect: { type: 'passive', trigger: 'onAttack', action: 'bonusFarDamage', distance: 100, multiplier: 1.2 },
     tags: ['dégâts', 'distance'],
+    classMultipliers: { paladin: 2 }, // EXEMPLE : Paladin double l'effet
   },
   {
     id: 'overload', name: 'Surcharge', color: UPGRADE_COLORS.RED, rarity: 'common', maxStack: 3,
@@ -411,8 +444,12 @@ export function applySynergies(upgrades) {
 /**
  * Calcule les stats du joueur en tenant compte de tous les upgrades.
  * Les stats de base (player) sont enrichies par les effets de type 'stat'.
+ * Prend en compte les synergies de classe (classMultipliers).
+ * @param {object} basePlayer - stats de base du joueur
+ * @param {array} activeUpgrades - upgrades actives
+ * @param {string} playerClass - id de la classe du joueur (ex: 'paladin')
  */
-export function computePlayerStats(basePlayer, activeUpgrades) {
+export function computePlayerStats(basePlayer, activeUpgrades, playerClass) {
   let stats = { ...basePlayer };
   const curseMult = hasCurseSynergy(activeUpgrades) ? 2 : 1;
 
@@ -437,18 +474,24 @@ export function computePlayerStats(basePlayer, activeUpgrades) {
   }
 
   activeUpgrades.forEach(u => {
+    // Multiplier de classe si défini
+    let classMult = 1;
+    if (u.classMultipliers && playerClass && u.classMultipliers[playerClass]) {
+      classMult = u.classMultipliers[playerClass];
+    }
     if (u.effect.type === 'stat') {
       const changes = u.effect.changes || [{ stat: u.effect.stat, value: u.effect.value }];
       changes.forEach(({ stat, value, multiplicative }) => {
         if (stats[stat] !== undefined) {
           if (multiplicative) {
-            stats[stat] *= value;
+            stats[stat] *= value * classMult;
           } else {
-            stats[stat] += value * curseMult;
+            stats[stat] += value * curseMult * classMult;
           }
         }
       });
     }
+    // TODO : appliquer le multiplicateur sur d'autres effets si besoin
   });
 
   stats.attack  = Math.max(1,   stats.attack);
