@@ -3,14 +3,7 @@ import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-nati
 import { PALETTE, TUTORIAL_STEPS } from '../constants';
 import { useT } from '../utils/i18n';
 
-const TUTORIAL_STEPS = [
-  { title: 'Step 1', desc: 'Description for step 1', icon: '🔹' },
-  { title: 'Step 2', desc: 'Description for step 2', icon: '🔸' },
-  { title: 'Step 3', desc: 'Description for step 3', icon: '🔹' },
-  { title: 'Step 4', desc: 'Description for step 4', icon: '🔸' },
-  { title: 'Step 5', desc: 'Description for step 5', icon: '🔹' },
-  { title: 'Step 6', desc: 'Description for step 6', icon: '🔸' },
-];
+// ...existing code...
 
 export default function TutorialScreen({ navigation }) {
   const [step, setStep] = useState(0);

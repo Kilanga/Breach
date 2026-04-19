@@ -68,6 +68,8 @@ const ArenaRenderer = memo(({ gameState, arenaWidth, arenaHeight, scaleX, scaleY
   const dustParticles   = particles.filter(p => p.type === 'dust');
   const sparkParticles  = particles.filter(p => p.type === 'spark');
   const impactParticles = particles.filter(p => p.type === 'impact');
+  // Chiffres de dégâts flottants
+  const floatTexts      = particles.filter(p => p.type === 'float_text');
 
   // Particules murs d'énergie (boss Architecte)
   const energyWalls = particles.filter(p => p.type === 'energy_wall');
@@ -290,6 +292,28 @@ const ArenaRenderer = memo(({ gameState, arenaWidth, arenaHeight, scaleX, scaleY
 
       {/* ─── Joueur ─────────────────────────────────────────────────────── */}
       <PlayerShape player={player} highlight={highlightPlayer} />
+
+      {/* ─── Chiffres de dégâts flottants ─────────────────────────────── */}
+      {floatTexts.map(p => {
+        const progress = 1 - p.life / p.maxLife;
+        const opacity  = Math.max(0, p.life / p.maxLife);
+        const yOffset  = progress * 28;
+        const isBig    = p.text && p.text.endsWith('!');
+        return (
+          <SvgText
+            key={p.id}
+            x={p.x}
+            y={p.y - yOffset}
+            fill={p.color || '#FFFFFF'}
+            fontSize={isBig ? 15 : 11}
+            fontWeight="bold"
+            textAnchor="middle"
+            opacity={opacity}
+          >
+            {p.text}
+          </SvgText>
+        );
+      })}
     </Svg>
   );
 });

@@ -12,9 +12,32 @@ export const UPGRADE_SYNERGIES = [
     id: 'burn_explode',
     upgrades: ['ignition', 'fracture'],
     description: 'Les ennemis brûlants explosent à leur mort (30% PV en AoE).',
-    // L'effet sera géré dans le système d'attaque ou de mort d'ennemi
+    color: '#FF6600',
   },
-  // Ajoutez d'autres synergies ici
+  {
+    id: 'freeze_shatter',
+    upgrades: ['gelbomb', 'fracture'],
+    description: 'Les ennemis gelés se brisent à leur mort : explosion de glace (25% PV) qui gèle les proches.',
+    color: '#44CCFF',
+  },
+  {
+    id: 'poison_chain',
+    upgrades: ['lame_poison', 'echo'],
+    description: 'Le poison se propage aux ennemis proches du mort empoisonné.',
+    color: '#44FF88',
+  },
+  {
+    id: 'leech_berserker',
+    upgrades: ['leech', 'berserker'],
+    description: 'Sous 30% de PV : chaque kill soigne 5 PV supplémentaires.',
+    color: '#FF4444',
+  },
+  {
+    id: 'speed_surge',
+    upgrades: ['sprint', 'surge'],
+    description: 'Chaque 5ème attaque (Surtension) donne aussi +40% vitesse pendant 1.5s.',
+    color: '#FFDD44',
+  },
 ];
 
 /**

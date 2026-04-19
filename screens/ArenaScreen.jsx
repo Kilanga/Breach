@@ -525,6 +525,7 @@ export default function ArenaScreen() {
           activeUpgrades={gameStateRef.current?.activeUpgrades || []}
           activeRelics={gameStateRef.current?.activeRelics || []}
           weeklyEvent={gameStateRef.current?.weeklyEvent}
+          killStreak={uiState.killStreak || 0}
           onShowUpgradeTree={() => setShowUpgradeTree(true)}
         />
         {relicNotif && (
@@ -687,6 +688,7 @@ function extractUiState(s) {
     ambushReady: s.ambushReady,
     ambushTimer: s.ambushTimer,
     surgeCounter: s.surgeCounter || 0,
+    killStreak:  s.killStreak  || 0,
     enemies:     s.enemies,
     obstacles:   s.obstacles || [],
     renderState: {

@@ -1,10 +1,26 @@
+
+import { WEEKLY_CHALLENGES } from '../../systems/questSystem';
+import { PERMANENT_UPGRADES_CATALOG } from '../../constants';
+import { computePlayerStats } from '../../systems/upgradeSystem';
+import { CLASS_INFO } from '../../constants';
+import { trackEvent } from '../../utils/telemetry';
+import { submitScore } from '../../services/leaderboardApi';
+import { addLocalScore } from '../../services/localLeaderboard';
+import { MILESTONES, isMilestoneReached } from '../../systems/milestoneSystem';
+import { BADGES } from '../../systems/badgeSystem';
+
+/**
+ * BREACH — Slice méta-progression (persistée)
+ */
+
+export function createMetaSlice(set, get) {
+  return {
     // ── Sélection du badge affiché ──────────────────────────────────────
     setSelectedBadge: (badgeId) => {
       const meta = get().meta;
       if (!meta.badges?.includes(badgeId)) return;
       set({ meta: { ...meta, selectedBadge: badgeId } });
     },
-import { WEEKLY_CHALLENGES } from '../../systems/questSystem';
     // ── Défi hebdomadaire ───────────────────────────────────────────────
     checkWeeklyChallenge: () => {
       const meta = get().meta;
@@ -33,60 +49,58 @@ import { WEEKLY_CHALLENGES } from '../../systems/questSystem';
       }
       return challenge;
     },
-/**
- * BREACH — Slice méta-progression (persistée)
- */
+    // ── Quêtes journalières ─────────────────────────────────────────────────
+    checkDailyQuests: () => {
+      const meta = get().meta;
+      const today = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
+      const dq    = meta.dailyQuests;
+      if (!dq || dq.date !== today) {
+        // Nouveau jour → réinitialiser la progression
+        const fresh = {
+          date:     today,
+          progress: { kill_100: 0, reach_level_10: 0 },
+          claimed:  {},
+        };
+        set({ meta: { ...meta, dailyQuests: fresh } });
+        return fresh;
+      }
+      return dq;
+    },
 
-import { PERMANENT_UPGRADES_CATALOG } from '../../constants';
-import { computePlayerStats } from '../../systems/upgradeSystem';
-import { CLASS_INFO } from '../../constants';
-import { trackEvent } from '../../utils/telemetry';
-import { submitScore } from '../../services/leaderboardApi';
-import { addLocalScore } from '../../services/localLeaderboard';
-import { MILESTONES, isMilestoneReached } from '../../systems/milestoneSystem';
-import { BADGES } from '../../systems/badgeSystem';
+    updateDailyQuestProgress: ({ kills, level }) => {
+      const meta = get().meta;
+      const today = new Date().toISOString().slice(0, 10);
+      const dq    = meta.dailyQuests;
+      if (!dq || dq.date !== today) return;
+      const progress = { ...dq.progress };
+      // kill_100 : cumul des kills sur la journée
+      progress.kill_100      = Math.min(100, (progress.kill_100      || 0) + (kills || 0));
+      // reach_level_10 : max level atteint aujourd'hui
+      progress.reach_level_10 = Math.max(progress.reach_level_10 || 0, level || 0);
+      set({ meta: { ...meta, dailyQuests: { ...dq, progress } } });
+    },
 
-export const INITIAL_META = {
-  permanentUpgrades:  [],
-  bestSurvivalTime:   0,      // secondes
-  bestScore:          0,      // meilleur score toutes runs
-  totalRuns:          0,
-  totalKills:         0,
-  totalWins:          0,      // runs de 5min+ complétés
-  achievements:       [],
-  runHistory:         [],     // 5 dernières runs
-  localLeaderboard:   [],     // Top 5 scores
-  playerName:         '',
-  talentPoints:       0,
-  unlockedTalents:    [],
-  purchasedClasses:   [],
-  shapeStats: {
-    triangle: { runs: 0, bestTime: 0, wins: 0, kills: 0 },
-    circle:   { runs: 0, bestTime: 0, wins: 0, kills: 0 },
-    hexagon:  { runs: 0, bestTime: 0, wins: 0, kills: 0 },
-    shadow:   { runs: 0, bestTime: 0, wins: 0, kills: 0 },
-    paladin:  { runs: 0, bestTime: 0, wins: 0, kills: 0 },
-    octagon:  { runs: 0, bestTime: 0, wins: 0, kills: 0 },
-    engineer: { runs: 0, bestTime: 0, wins: 0, kills: 0 },
-  },
-  musicEnabled:      true,
-  sfxEnabled:        true,
-  musicVolume:       0.5,
-  sfxVolume:         0.7,
-  largeText:         false,
-  colorBlindMode:    false,
-  language:          'fr',
-  lastLoginDate:     null, // timestamp (ms)
-  loginStreak:       0,    // jours consécutifs
-  loginRewards:      [],   // historique des récompenses de connexion
-  weeklyChallenge:   null, // { id, startDate, progress, completed, rewardClaimed }
-  weeklyChallengeHistory: [], // [{ id, startDate, completed }]
-  badges:            [],   // ids des badges débloqués
-  selectedBadge:     null, // id du badge sélectionné
-};
+    claimDailyQuestReward: (questId) => {
+      const meta = get().meta;
+      const today = new Date().toISOString().slice(0, 10);
+      const dq    = meta.dailyQuests;
+      if (!dq || dq.date !== today) return false;
+      if (dq.claimed?.[questId]) return false; // déjà réclamée
+      const { QUESTS } = require('../../systems/questSystem');
+      const quest = QUESTS.find(q => q.id === questId && q.type === 'daily');
+      if (!quest) return false;
+      const progress = dq.progress?.[questId] || 0;
+      if (progress < quest.goal) return false; // pas encore complétée
+      // Accorder la récompense
+      const amount = quest.reward?.amount || 1;
+      set({ meta: {
+        ...meta,
+        talentPoints: (meta.talentPoints || 0) + amount,
+        dailyQuests: { ...dq, claimed: { ...(dq.claimed || {}), [questId]: true } },
+      }});
+      return true;
+    },
 
-export function createMetaSlice(set, get) {
-  return {
     // ── Récompense de connexion quotidienne ──────────────────────────────
     checkLoginReward: () => {
       const meta = get().meta;
@@ -223,6 +237,23 @@ export function createMetaSlice(set, get) {
       const extraFragment = newMeta.permanentUpgrades.includes('perm_fragmaster') ? 1 : 0;
       const fragmentsEarned = Math.floor(survivalTime / 10) + kills + extraFragment;
       newMeta.talentPoints = (newMeta.talentPoints || 0) + Math.floor(fragmentsEarned / 5);
+
+      // Mise à jour quêtes journalières
+      const today = new Date().toISOString().slice(0, 10);
+      const dq    = newMeta.dailyQuests;
+      if (dq && dq.date === today) {
+        const updProg = { ...dq.progress };
+        updProg.kill_100       = Math.min(100, (updProg.kill_100       || 0) + kills);
+        updProg.reach_level_10 = Math.max(updProg.reach_level_10 || 0, level || 1);
+        newMeta.dailyQuests = { ...dq, progress: updProg };
+      } else {
+        // Premier accès du jour : initialiser
+        newMeta.dailyQuests = {
+          date:     today,
+          progress: { kill_100: kills, reach_level_10: level || 1 },
+          claimed:  {},
+        };
+      }
 
       set({ meta: newMeta });
       const playerName = meta.playerName || 'Anonyme';

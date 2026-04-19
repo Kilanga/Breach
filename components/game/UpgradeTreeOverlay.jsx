@@ -1,10 +1,12 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, Animated, Easing } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { PALETTE, PALETTE_DALTONISM } from '../constants';
+import { PALETTE, PALETTE_DALTONISM } from '../../constants';
 import { getUpgradeTreeData } from './upgradeTreeUtils';
 
 // Simple upgrade tree: shows all upgrades in order, grouped by color
+
+export default function UpgradeTreeOverlay({ upgrades = [], colorBlindMode = false, onClose }) {
   if (!upgrades.length) return null;
   const palette = colorBlindMode ? PALETTE_DALTONISM : PALETTE;
   const { grouped, synergies } = getUpgradeTreeData(upgrades);
@@ -55,6 +57,7 @@ import { getUpgradeTreeData } from './upgradeTreeUtils';
         Haptics.selectionAsync && Haptics.selectionAsync();
       }}>Fermer</Text>
     </Animated.View>
+
   );
 }
 

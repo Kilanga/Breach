@@ -31,7 +31,7 @@ import useGameStore from '../../store/gameStore';
 
 const HUD = memo(({ player, level, xp, elapsedTime, kills, score, bossActive, bossEnemy,
                     ambushReady, ambushTimer, surgeCounter, gameMode, activeUpgrades = [],
-                    fontScale = 1, palette = PALETTE, weeklyEvent }) => {
+                    fontScale = 1, palette = PALETTE, weeklyEvent, killStreak = 0 }) => {
   const [showQuestHistory, setShowQuestHistory] = useState(false);
   const [milestoneToShow, setMilestoneToShow] = useState(null);
   const [loginReward, setLoginReward] = useState(null);
@@ -287,6 +287,15 @@ const HUD = memo(({ player, level, xp, elapsedTime, kills, score, bossActive, bo
         </View>
       )}
 
+      {/* Kill streak */}
+      {killStreak >= 5 && (
+        <View style={[styles.streakBox, killStreak >= 20 && styles.streakBoxLegend, killStreak >= 10 && killStreak < 20 && styles.streakBoxEpic]}>
+          <Text style={styles.streakText}>
+            {killStreak >= 20 ? '⚡ LEGENDAIRE' : killStreak >= 10 ? '🔥 EN FUITE' : '✨ STREAK'} ×{killStreak}
+          </Text>
+        </View>
+      )}
+
       {/* Header : timer + score */}
       <View style={styles.header}>
         <View style={styles.timerBox}>
@@ -537,6 +546,30 @@ const styles = StyleSheet.create({
   killsBox: { alignItems: 'center', flexDirection: 'row', gap: 4 },
   killsLabel: { fontSize: 12 },
   kills: { fontSize: 16, fontWeight: 'bold', color: '#FF6666' },
+  streakBox: {
+    alignSelf: 'center',
+    backgroundColor: 'rgba(255,200,0,0.15)',
+    borderColor: '#FFCC00',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    marginBottom: 4,
+  },
+  streakBoxEpic: {
+    backgroundColor: 'rgba(255,80,0,0.20)',
+    borderColor: '#FF6600',
+  },
+  streakBoxLegend: {
+    backgroundColor: 'rgba(200,0,255,0.22)',
+    borderColor: '#DD44FF',
+  },
+  streakText: {
+    color: '#FFDD44',
+    fontWeight: 'bold',
+    fontSize: 13,
+    letterSpacing: 1,
+  },
 
   bossWarning: {
     alignSelf: 'center',

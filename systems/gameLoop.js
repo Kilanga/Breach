@@ -170,6 +170,8 @@ function updateEnemies(s, dt) {
             : dt;
       // Applique le multiplicateur de vitesse ennemie
       effectiveDt *= enemySpeedMult;
+      // Buff Shaman : +20% vitesse pendant 3s
+      if (enemy._buffActive) effectiveDt *= 1.2;
 
       // Applique le multiplicateur de taille de boss si défini
       if (enemy.behavior && enemy.behavior.startsWith('boss') && s._bossSizeMult) {
@@ -237,6 +239,36 @@ function updateEnemies(s, dt) {
         default:
           enemy = chasePlayer(enemy, player, effectiveDt);
       }
+      // ── Fantôme : invulnérabilité cyclique ────────────────────────────────
+      if (enemy.type === 'fantome') {
+        enemy._phaseTimer = (enemy._phaseTimer || 0) + dt;
+        const phaseCycle = 6.0; // cycle total
+        const phasePos   = enemy._phaseTimer % phaseCycle;
+        enemy._phaseImmune = phasePos < 2.0; // invulnérable les 2 premières secondes
+        if (enemy._phaseImmune) {
+          enemy.opacity = 0.35; // semi-transparent
+        } else {
+          enemy.opacity = 1.0;
+        }
+      }
+      // ── Shaman : buff ennemis proches toutes les 5s ───────────────────────
+      if (enemy.type === 'shaman') {
+        enemy._buffTimer = (enemy._buffTimer || 0) + dt;
+        if (enemy._buffTimer >= 5) {
+          enemy._buffTimer = 0;
+          // Signal visuel
+          newParticles.push({
+            id: makeId(), x: enemy.x, y: enemy.y,
+            type: 'ring', maxRadius: 80,
+            life: 0.5, maxLife: 0.5, color: '#88FF44',
+            vx: 0, vy: 0, radius: 0,
+          });
+          // Le buff est appliqué au pass 2 (post-map)
+          enemy._buffPulse = true;
+        } else {
+          enemy._buffPulse = false;
+        }
+      }
       // Collision joueur-ennemi (dégâts)
       const info = ENEMY_INFO[enemy.type];
       if (info && info.baseDamage && enemy.hp > 0 && player.invincibleTimer <= 0) {
@@ -255,6 +287,28 @@ function updateEnemies(s, dt) {
     })
 
     .filter(Boolean);
+
+  // ── Buff Shaman : appliquer +20% SPD et ATQ aux ennemis proches ─────────
+  const shamans = newEnemies.filter(e => e && e.type === 'shaman' && e._buffPulse);
+  if (shamans.length > 0) {
+    newEnemies = newEnemies.map(e => {
+      if (!e || e.type === 'shaman') return e;
+      for (const sh of shamans) {
+        const dx = e.x - sh.x;
+        const dy = e.y - sh.y;
+        if (Math.sqrt(dx*dx + dy*dy) < 80) {
+          return { ...e, _shamanBuffTimer: 3.0 }; // 3s de buff
+        }
+      }
+      return e;
+    });
+  }
+  // Décrémenter le timer de buff Shaman et appliquer l'effet vitesse
+  newEnemies = newEnemies.map(e => {
+    if (!e || !e._shamanBuffTimer) return e;
+    const t = Math.max(0, e._shamanBuffTimer - dt);
+    return { ...e, _shamanBuffTimer: t, _buffActive: t > 0 };
+  });
 
   // Ajouter les invocations à la liste des ennemis
   if (newSummons.length > 0) {
@@ -383,6 +437,8 @@ export function createInitialState(shape, startingStats, permanentUpgrades = [])
     attackBoostTimer: 0,        // boost d'attaque après kill (chain_reaction)
     attackBoostMult:  1,
     surgeCounter:     0,        // compteur pour Surtension (toutes les 5 attaques)
+    killStreak:       0,        // kills consécutifs sans prendre de dégâts
+    killStreakTimer:  0,        // timer de réinitialisation du streak (5s d'inactivité)
     // Mutations actives pour la run
     activeMutations,
     // Événements aléatoires
@@ -394,20 +450,21 @@ export function createInitialState(shape, startingStats, permanentUpgrades = [])
     weeklyEvent,
     // Upgrades permanentes actives pour cette run
     permanentUpgrades,
-  /**
-   * Ajoute une relique à l'état de partie si non déjà possédée.
-   * @param {object} state - état courant du jeu
-   * @param {object} relic - objet relique (depuis constants.RELICS)
-   * @returns {object} nouvel état avec la relique ajoutée
-   */
-  export function gainRelic(state, relic) {
-    if (!relic || !relic.id) return state;
-    if (state.activeRelics.some(r => r.id === relic.id)) return state; // déjà possédée
-    return {
-      ...state,
-      activeRelics: [...state.activeRelics, relic],
-    };
-  }
+  };
+}
+
+/**
+ * Ajoute une relique à l'état de partie si non déjà possédée.
+ * @param {object} state - état courant du jeu
+ * @param {object} relic - objet relique (depuis constants.RELICS)
+ * @returns {object} nouvel état avec la relique ajoutée
+ */
+export function gainRelic(state, relic) {
+  if (!relic || !relic.id) return state;
+  if (state.activeRelics.some(r => r.id === relic.id)) return state;
+  return {
+    ...state,
+    activeRelics: [...state.activeRelics, relic],
   };
 }
 
@@ -558,6 +615,109 @@ export function updateGame(state, dt, input) {
       });
     }
   }
+  // ── Appliquer les effets des événements aléatoires ────────────────────────
+  if (s.eventState && !s.eventState._applied) {
+    s.eventState = { ...s.eventState, _applied: true };
+    const ev = s.eventState;
+    switch (ev.effect?.type) {
+      case 'heal_percent': {
+        // Soigne 30% des PV manquants
+        const missing = s.player.maxHp - s.player.hp;
+        s.player = { ...s.player, hp: Math.min(s.player.maxHp, s.player.hp + Math.round(missing * ev.effect.value)) };
+        break;
+      }
+      case 'spawn_xp': {
+        // Fait apparaître des orbes XP partout
+        for (let i = 0; i < (ev.effect.amount || 20); i++) {
+          s.xpOrbs.push({
+            id: makeId(),
+            x: 60 + Math.random() * (ARENA_WIDTH  - 120),
+            y: 60 + Math.random() * (ARENA_HEIGHT - 120),
+            value: 4,
+            radius: 8,
+          });
+        }
+        break;
+      }
+      case 'spawn_miniboss': {
+        // Invoque un mini-boss au centre
+        const scaling = getEnemyScaling(s.elapsedTime);
+        const mbType  = ENEMY_TYPES.BOSS_VOID;
+        const info    = ENEMY_INFO[mbType];
+        if (info) {
+          const mbHp = Math.round(info.baseHp * scaling.hpMult * 0.5);
+          s.enemies = [...s.enemies, {
+            id: makeId(), type: mbType,
+            x: ARENA_WIDTH / 2, y: ARENA_HEIGHT / 2,
+            hp: mbHp, maxHp: mbHp,
+            damage: Math.round((info.baseDamage || 10) * scaling.damageMult * 0.5),
+            speed:  (info.baseSpeed || 1.5) * scaling.speedMult,
+            radius: info.radius || 24,
+            color:  info.color  || '#BB44FF',
+            behavior: info.behavior || 'boss_spiral',
+            xpValue: Math.round((info.xpValue || 30) * 0.5),
+            isBoss: true,
+            isMinibon: true,
+          }];
+        }
+        break;
+      }
+      case 'meteor': {
+        // Fait tomber N météores à positions aléatoires (dégâts retardés 1s)
+        s._meteorList = [];
+        for (let i = 0; i < (ev.effect.count || 8); i++) {
+          s._meteorList.push({
+            id: makeId(),
+            x: 60 + Math.random() * (ARENA_WIDTH  - 120),
+            y: 60 + Math.random() * (ARENA_HEIGHT - 120),
+            delay: 0.3 + Math.random() * 1.5,
+            damage: ev.effect.damage || 15,
+          });
+        }
+        break;
+      }
+      case 'enemy_buff':
+        // Stocké sur eventState, appliqué via s._enemySpeedMult/_eventAttackMult
+        s._eventEnemyBuff = { speed: ev.effect.speed || 1.5, attack: ev.effect.attack || 1.5, until: s.elapsedTime + (ev.effect.duration || 10) };
+        break;
+      default:
+        break;
+    }
+  }
+  // Météores : décrémenter délais et appliquer dégâts
+  if (s._meteorList && s._meteorList.length > 0) {
+    const surviving = [];
+    for (const meteor of s._meteorList) {
+      const newDelay = meteor.delay - dt;
+      if (newDelay <= 0) {
+        // Impact
+        const dx = s.player.x - meteor.x;
+        const dy = s.player.y - meteor.y;
+        if (Math.sqrt(dx*dx + dy*dy) < 50) {
+          s = damagePlayer(s, meteor.damage, false);
+        }
+        s.particles.push({
+          id: makeId(), x: meteor.x, y: meteor.y,
+          type: 'ring', maxRadius: 50,
+          life: 0.4, maxLife: 0.4, color: '#FF8800',
+          vx: 0, vy: 0, radius: 0,
+        });
+      } else {
+        surviving.push({ ...meteor, delay: newDelay });
+      }
+    }
+    s._meteorList = surviving;
+  }
+  // Buff ennemis temporaire : appliquer/expirer
+  if (s._eventEnemyBuff) {
+    if (s.elapsedTime < s._eventEnemyBuff.until) {
+      s._enemySpeedMult  = (s._enemySpeedMult  || 1) * s._eventEnemyBuff.speed;
+      s._eventAttackMult = (s._eventAttackMult || 1) * s._eventEnemyBuff.attack;
+    } else {
+      s._eventEnemyBuff  = null;
+      s._eventAttackMult = 1;
+    }
+  }
   // Réinitialise l'événement après 10s (ou selon type)
   if (s.eventState && s.elapsedTime - s.eventState.startTime > 10) {
     s.eventState = null;
@@ -620,6 +780,11 @@ export function updateGame(state, dt, input) {
   s.player.invincibleTimer = Math.max(0, (s.player.invincibleTimer || 0) - dt);
   s.attackBoostTimer = Math.max(0, s.attackBoostTimer - dt);
   if (s.attackBoostTimer <= 0) s.attackBoostMult = 1;
+  // Kill streak : timer d'expiration (5s sans kill)
+  if (s.killStreakTimer > 0) {
+    s.killStreakTimer = Math.max(0, s.killStreakTimer - dt);
+    if (s.killStreakTimer <= 0) s.killStreak = 0;
+  }
 
   // ── Ambush (Ombre) ────────────────────────────────────────────────────────
   if (s.player.shape === 'shadow') {
@@ -778,6 +943,19 @@ export function updateGame(state, dt, input) {
     s.attackTimer = cd;
     s.surgeCounter = (s.surgeCounter || 0) + 1;
     const isSurge = hasUpgrade(s.activeUpgrades, 'surge') && s.surgeCounter % 5 === 0;
+    // Synergie speed_surge : Sprint + Surtension → boost vitesse sur la 5ème attaque
+    if (isSurge) {
+      const { hasSynergy: hasSyn } = require('./upgradeSystem');
+      if (hasSyn(s.activeUpgrades, 'speed_surge')) {
+        s._speedBoostTimer = 1.5;
+        s._speedBoostMult  = 1.4;
+      }
+    }
+    // Appliquer / décrémenter le boost de vitesse speed_surge
+    if (s._speedBoostTimer > 0) {
+      s._speedBoostTimer = Math.max(0, s._speedBoostTimer - dt);
+      if (s._speedBoostTimer <= 0) s._speedBoostMult = 1;
+    }
     const attackFn = getAttackFn(s.player.shape);
     const baseAttack = Math.round(s.player.attack * s.attackBoostMult * (isSurge ? 2 : 1));
     const effPlayer = { ...s.player, attack: baseAttack };
@@ -1329,6 +1507,15 @@ function updatePlayerProjectiles(s, dt) {
             const effectiveDmg = (hasBossBane && e.isBoss) ? proj.damage * 1.3 : proj.damage;
             damageDealt += effectiveDmg;
             if (hasPermLifesteal) healFromKills += Math.min(Math.round(effectiveDmg * 0.1), 2);
+            // Chiffre de dégât flottant
+            const isCrit = proj.isCrit || false;
+            newParticles.push({
+              id: makeId(), x: e.x + (Math.random() - 0.5) * 20, y: e.y - e.radius,
+              type: 'float_text',
+              text: Math.ceil(effectiveDmg).toString() + (isCrit ? '!' : ''),
+              color: isCrit ? '#FFCC00' : proj.hasBurn ? '#FF6600' : proj.hasFreeze ? '#88DDFF' : '#FFFFFF',
+              life: 0.9, maxLife: 0.9, vy: -0.7, vx: (Math.random() - 0.5) * 0.25,
+            });
             // Appliquer dégâts
             let newE = applyDamageToEnemy(e, effectiveDmg, s.activeUpgrades);
             // Appliquer slow si c'est une onde de prémonition (Oracle)
@@ -1357,6 +1544,15 @@ function updatePlayerProjectiles(s, dt) {
             const effectiveDmg = (hasBossBane && e.isBoss) ? proj.damage * 1.3 : proj.damage;
             damageDealt += effectiveDmg;
             if (hasPermLifesteal) healFromKills += Math.min(Math.round(effectiveDmg * 0.1), 2);
+            // Chiffre de dégât flottant
+            const isCrit = proj.isCrit || false;
+            newParticles.push({
+              id: makeId(), x: e.x + (Math.random() - 0.5) * 16, y: e.y - e.radius,
+              type: 'float_text',
+              text: Math.ceil(effectiveDmg).toString() + (isCrit ? '!' : ''),
+              color: isCrit ? '#FFCC00' : proj.hasBurn ? '#FF6600' : proj.hasFreeze ? '#88DDFF' : '#FFFFFF',
+              life: 0.9, maxLife: 0.9, vy: -0.7, vx: (Math.random() - 0.5) * 0.22,
+            });
             newEnemies[i] = applyDamageToEnemy(e, effectiveDmg, s.activeUpgrades);
             if (proj.piercing) {
               proj = { ...proj, piercedIds: [...proj.piercedIds, e.id] };
@@ -1384,6 +1580,20 @@ function updatePlayerProjectiles(s, dt) {
 
   for (const dead of deadEnemies) {
     kills++;
+    // Porteur : drop de relique garanti
+    if (dead.type === 'porteur' && RELICS && RELICS.length > 0) {
+      const owned     = (s.activeRelics || []).map(r => r.id);
+      const available = RELICS.filter(r => !owned.includes(r.id));
+      if (available.length > 0) {
+        const relic = available[Math.floor(Math.random() * available.length)];
+        s = require('./gameLoop').gainRelic(s, relic);
+        newParticles.push({
+          id: makeId(), x: dead.x, y: dead.y,
+          type: 'relic_drop', color: '#FFAA44',
+          life: 1.5, maxLife: 1.5, radius: 0, maxRadius: 45,
+        });
+      }
+    }
     if (dead.isBoss) {
       bossKills++;
       // Drop de relique : 40% de chance si il reste des reliques non possédées
@@ -1455,7 +1665,8 @@ function updatePlayerProjectiles(s, dt) {
     // Fracture upgrade + anneau visuel
     // Fracture upgrade OU synergie Brûlure+Explosion (ennemi brûlé)
     const { hasSynergy } = require('./upgradeSystem');
-    const isBurning = dead.status?.burn && dead.status.burn > 0;
+    const isBurning = dead.burnTimer > 0;
+    const isFrozen  = dead.freezeTimer > 0;
     if (hasUpgrade(s.activeUpgrades, 'fracture') || (hasSynergy(s.activeUpgrades, 'burn_explode') && isBurning)) {
       const fracDmg = dead.maxHp * 0.3;
       newEnemies = newEnemies.map(e => {
@@ -1473,9 +1684,41 @@ function updatePlayerProjectiles(s, dt) {
         vx: 0, vy: 0, radius: 0,
       });
     }
+    // Synergie freeze_shatter : Gelbomb + Fracture → les ennemis gelés explosent aussi
+    if (hasSynergy(s.activeUpgrades, 'freeze_shatter') && isFrozen && !hasUpgrade(s.activeUpgrades, 'fracture')) {
+      const fracDmg = dead.maxHp * 0.25;
+      newEnemies = newEnemies.map(e => {
+        const dx = e.x - dead.x;
+        const dy = e.y - dead.y;
+        if (Math.sqrt(dx*dx + dy*dy) < FRACTURE_RADIUS) {
+          return { ...e, hp: e.hp - fracDmg, freezeTimer: 0.3 };
+        }
+        return e;
+      });
+      newParticles.push({
+        id: makeId(), x: dead.x, y: dead.y,
+        type: 'ring', maxRadius: FRACTURE_RADIUS,
+        life: 0.35, maxLife: 0.35, color: '#44CCFF',
+        vx: 0, vy: 0, radius: 0,
+      });
+    }
+    // Synergie poison_chain : Lame Empoisonnée + Écho → le poison se propage aux proches
+    if (hasSynergy(s.activeUpgrades, 'poison_chain') && dead.poisonTimer > 0) {
+      newEnemies = newEnemies.map(e => {
+        const dx = e.x - dead.x;
+        const dy = e.y - dead.y;
+        if (Math.sqrt(dx*dx + dy*dy) < 80) {
+          return { ...e, poisonDamage: dead.poisonDamage || 2, poisonTimer: 2.5 };
+        }
+        return e;
+      });
+    }
     // Vol de vie (leech)
     const leechCount = s.activeUpgrades.filter(u => u.id === 'leech').length;
-    healFromKills += leechCount;
+    // Synergie leech_berserker : Vol de vie + Berserker → soin bonus sous 30% HP
+    const leechBerserker = hasSynergy(s.activeUpgrades, 'leech_berserker');
+    const isLowHp = s.player.hp / s.player.maxHp < 0.3;
+    healFromKills += leechCount + (leechBerserker && isLowHp ? 5 : 0);
     // Chain reaction
     if (hasUpgrade(s.activeUpgrades, 'chain_reaction')) {
       s.attackBoostMult = 1.5;
@@ -1523,12 +1766,17 @@ function updatePlayerProjectiles(s, dt) {
     healFromKills += Math.round(damageDealt * 0.15);
   }
 
-  // Appliquer kills et heal
+  // Appliquer kills et heal + kill streak
   if (kills > 0 || healFromKills > 0) {
     const newHp = Math.min(s.player.maxHp, s.player.hp + healFromKills);
     s.player = { ...s.player, hp: newHp };
     s.kills += kills;
     s.bossKills = (s.bossKills || 0) + bossKills;
+    // Kill streak : incrémenter et reset le timer d'expiration
+    if (kills > 0) {
+      s.killStreak      = (s.killStreak || 0) + kills;
+      s.killStreakTimer = 5.0; // 5s sans kill → reset
+    }
     const newXp = s.xp + deadEnemies.reduce((acc, e) => acc + (e.xpValue || 5), 0);
     const xpNeeded = xpForLevel(s.level);
     if (newXp >= xpNeeded) {
@@ -1668,20 +1916,24 @@ function damagePlayer(s, rawDamage, setInvincible) {
     if (!s.player.secondWindUsed && hasUpgrade(s.activeUpgrades, 'second_wind')) {
       return {
         ...s,
+        killStreak: 0, killStreakTimer: 0,
         player: { ...s.player, hp: 1, secondWindUsed: true, invincibleTimer: 2 },
         invincibleTimer: 2,
       };
     }
-    return { ...s, player: { ...s.player, hp: 0 }, alive: false };
+    return { ...s, killStreak: 0, killStreakTimer: 0, player: { ...s.player, hp: 0 }, alive: false };
   }
 
   return {
     ...s,
+    killStreak: 0, killStreakTimer: 0, // reset le streak à chaque dégât reçu
     player: { ...s.player, hp: newHp, invincibleTimer: setInvincible ? INVINCIBLE_DURATION : 0 },
   };
 }
 
 function applyDamageToEnemy(enemy, damage, upgrades) {
+  // Fantôme invulnérable en phase immune
+  if (enemy.type === 'fantome' && enemy._phaseImmune) return enemy;
   const tranchant = upgrades.filter(u => u.id === 'tranchant').length;
   let dmg = damage + tranchant * 2;
   const ignition = upgrades.filter(u => u.id === 'ignition').length;

@@ -1,4 +1,4 @@
-import { getActiveSynergies } from '../systems/upgradeSystem';
+import { getActiveSynergies } from '../../systems/upgradeSystem';
 
 // Utilitaire pour enrichir la liste d'upgrades avec les synergies actives
 export function getUpgradeTreeData(upgrades) {
